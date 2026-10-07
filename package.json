@@ -1,0 +1,21 @@
+{
+  "name": "mineguard-smart-helmet",
+  "version": "1.0.0",
+  "description": "MineGuard - Smart Helmet Safety & Health Monitoring Dashboard",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,magenta\" \"npm run dev --workspace=server\" \"npm run dev --workspace=client\"",
+    "start": "npm run start --workspace=server",
+    "build": "npm run build --workspace=client",
+    "simulate": "npm run simulate --workspace=server",
+    "seed": "npm run seed --workspace=server",
+    "test": "npm run test --workspace=server"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

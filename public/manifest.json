@@ -1,0 +1,16 @@
+{
+  "short_name": "MineGuard",
+  "name": "MineGuard Smart Helmet Safety",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#F5F7FB",
+  "theme_color": "#3B82F6",
+  "display": "standalone",
+  "orientation": "portrait-primary"
+}

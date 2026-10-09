@@ -7,11 +7,11 @@ import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  PieChart as RechartsPie, Pie, Cell, Legend 
+  PieChart as RechartsPie, Pie, Cell, Legend, CartesianGrid 
 } from 'recharts';
 
 export default function AlertsView() {
-  const { activeAlerts, refreshData } = useApp();
+  const { activeAlerts, refreshData, acknowledgeDemoAlert, resolveDemoAlert } = useApp();
   const [alerts, setAlerts] = useState([]);
   const [filterSeverity, setFilterSeverity] = useState('ALL');
   const [filterStatus, setFilterStatus] = useState('ALL');
@@ -36,8 +36,15 @@ export default function AlertsView() {
     fetchAlertHistory();
   }, [activeAlerts]);
 
+  // Merge server alerts with active in-memory demo alerts
+  const demoAlerts = activeAlerts.filter(a => a.is_demo || a.worker_id === 'DEMO-MINER-01');
+  const allAlerts = [
+    ...demoAlerts,
+    ...alerts.filter(a => !demoAlerts.some(da => da.id === a.id))
+  ];
+
   // Filtering Logic
-  const filtered = alerts.filter(a => {
+  const filtered = allAlerts.filter(a => {
     if (filterSeverity !== 'ALL' && a.severity !== filterSeverity) return false;
     if (filterType !== 'ALL' && a.type !== filterType) return false;
     if (filterStatus === 'ACTIVE' && (a.resolved_at || a.acknowledged)) return false;
@@ -54,6 +61,11 @@ export default function AlertsView() {
   });
 
   const handleAcknowledge = async (id) => {
+    const isDemo = demoAlerts.some(da => da.id === id);
+    if (isDemo) {
+      if (acknowledgeDemoAlert) acknowledgeDemoAlert(id);
+      return;
+    }
     try {
       await api.acknowledgeAlert(id, 'Safety Officer');
       fetchAlertHistory();
@@ -64,6 +76,11 @@ export default function AlertsView() {
   };
 
   const handleResolve = async (id) => {
+    const isDemo = demoAlerts.some(da => da.id === id);
+    if (isDemo) {
+      if (resolveDemoAlert) resolveDemoAlert(id);
+      return;
+    }
     try {
       await api.resolveAlert(id);
       fetchAlertHistory();
@@ -76,7 +93,15 @@ export default function AlertsView() {
   const handleBulkAcknowledge = async () => {
     if (selectedAlerts.length === 0) return;
     try {
-      await api.bulkAcknowledgeAlerts(selectedAlerts, 'Safety Officer');
+      const demoSelected = selectedAlerts.filter(id => demoAlerts.some(da => da.id === id));
+      const serverSelected = selectedAlerts.filter(id => !demoAlerts.some(da => da.id === id));
+
+      if (acknowledgeDemoAlert) {
+        demoSelected.forEach(id => acknowledgeDemoAlert(id));
+      }
+      if (serverSelected.length > 0) {
+        await api.bulkAcknowledgeAlerts(serverSelected, 'Safety Officer');
+      }
       setSelectedAlerts([]);
       fetchAlertHistory();
       refreshData();
@@ -94,71 +119,70 @@ export default function AlertsView() {
   };
 
   // Pie Chart Data: Alert Types breakdown
-  const typeCounts = alerts.reduce((acc, a) => {
+  const typeCounts = allAlerts.reduce((acc, a) => {
     acc[a.type] = (acc[a.type] || 0) + 1;
     return acc;
   }, {});
 
   const pieData = Object.entries(typeCounts).map(([name, value]) => ({ name, value }));
-  const PIE_COLORS = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#10B981', '#64748B'];
+  const PIE_COLORS = ['#F06548', '#F7B84B', '#176B87', '#299CDB', '#0AB39C', '#878A99'];
 
   // Bar Chart Data: Severity distribution
   const severityCounts = [
-    { severity: 'CRITICAL', count: alerts.filter(a => a.severity === 'CRITICAL').length },
-    { severity: 'WARNING', count: alerts.filter(a => a.severity === 'WARNING').length },
-    { severity: 'INFO', count: alerts.filter(a => a.severity === 'INFO').length }
+    { severity: 'CRITICAL', count: allAlerts.filter(a => a.severity === 'CRITICAL').length },
+    { severity: 'WARNING', count: allAlerts.filter(a => a.severity === 'WARNING').length },
+    { severity: 'INFO', count: allAlerts.filter(a => a.severity === 'INFO').length }
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       
-      {/* 1. Header & Summary Stats */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center space-x-2">
-            <span>Safety Alerts & Incident Logs</span>
-            <span className="px-2.5 py-0.5 bg-rose-100 text-rose-800 rounded-full text-xs font-bold">
-              {alerts.filter(a => !a.resolved_at).length} Unresolved
-            </span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Audit trail of gas threshold breaches, emergency SOS presses, and fall incidents
-          </p>
+      {/* 1. Breadcrumb Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#E9EBEC] gap-2">
+        <div className="flex items-center space-x-2">
+          <h1 className="text-base font-semibold text-[#495057]">
+            Incident &amp; alarm audit log
+          </h1>
+          <span className="badge-soft-danger text-[11px]">
+            {allAlerts.filter(a => !a.resolved_at).length} unresolved
+          </span>
         </div>
 
         <div className="flex items-center space-x-2">
           {selectedAlerts.length > 0 && (
             <button
               onClick={handleBulkAcknowledge}
-              className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center space-x-1.5"
+              className="px-3 py-1.5 bg-[#176B87] hover:bg-[#12566D] text-white text-xs font-medium rounded shadow-sm transition-colors flex items-center space-x-1.5"
             >
-              <Check className="h-4 w-4" />
+              <Check className="h-3.5 w-3.5" />
               <span>Acknowledge ({selectedAlerts.length})</span>
             </button>
           )}
 
           <button
             onClick={fetchAlertHistory}
-            className="p-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl shadow-sm transition-colors"
-            title="Refresh Alert List"
+            className="p-2 bg-white border border-[#E9EBEC] hover:bg-[#F3F6F9] text-[#878A99] rounded transition-colors"
+            title="Refresh alert list"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-[#176B87]' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* 2. Visual Analytics Summary: Donut & Severity Distribution */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* 2. Visual Analytics Summary: Classification & Severity Distribution (Velzon Cards) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         
         {/* Donut: Alert Types Breakdown */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft">
-          <div className="flex items-center space-x-2 mb-2">
-            <PieChart className="h-5 w-5 text-indigo-500" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Alert Classification by Type
-            </h4>
+        <div className="velzon-card">
+          <div className="velzon-card-header">
+            <div className="flex items-center space-x-2">
+              <PieChart className="h-4 w-4 text-[#176B87]" />
+              <h2 className="velzon-card-title">
+                Alert classification by type
+              </h2>
+            </div>
           </div>
-          <div className="h-48 w-full">
+          <div className="velzon-card-body h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <RechartsPie>
                 <Pie
@@ -166,8 +190,8 @@ export default function AlertsView() {
                   cx="50%"
                   cy="50%"
                   innerRadius={45}
-                  outerRadius={75}
-                  paddingAngle={4}
+                  outerRadius={70}
+                  paddingAngle={3}
                   dataKey="value"
                 >
                   {pieData.map((entry, index) => (
@@ -175,31 +199,34 @@ export default function AlertsView() {
                   ))}
                 </Pie>
                 <Tooltip />
-                <Legend iconSize={8} wrapperStyle={{ fontSize: '11px' }} />
+                <Legend iconSize={8} wrapperStyle={{ fontSize: '11px', fontFamily: 'Inter, sans-serif' }} />
               </RechartsPie>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Bar: Severity Distribution */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft">
-          <div className="flex items-center space-x-2 mb-2">
-            <BarChart2 className="h-5 w-5 text-blue-500" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-              Severity Frequency Distribution
-            </h4>
+        <div className="velzon-card">
+          <div className="velzon-card-header">
+            <div className="flex items-center space-x-2">
+              <BarChart2 className="h-4 w-4 text-[#176B87]" />
+              <h2 className="velzon-card-title">
+                Severity frequency distribution
+              </h2>
+            </div>
           </div>
-          <div className="h-48 w-full pt-2">
+          <div className="velzon-card-body h-48 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={severityCounts} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <XAxis dataKey="severity" stroke="#94A3B8" fontSize={11} />
-                <YAxis stroke="#94A3B8" fontSize={11} allowDecimals={false} />
-                <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '12px' }} />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#F3F6F9" />
+                <XAxis dataKey="severity" stroke="#878A99" fontSize={11} fontStyle="mono" />
+                <YAxis stroke="#878A99" fontSize={11} allowDecimals={false} fontStyle="mono" />
+                <Tooltip contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '6px', border: '1px solid #E9EBEC', fontSize: '12px' }} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
                   {severityCounts.map((entry, index) => (
                     <Cell 
                       key={`cell-${index}`} 
-                      fill={entry.severity === 'CRITICAL' ? '#EF4444' : entry.severity === 'WARNING' ? '#F59E0B' : '#3B82F6'} 
+                      fill={entry.severity === 'CRITICAL' ? '#F06548' : entry.severity === 'WARNING' ? '#F7B84B' : '#299CDB'} 
                     />
                   ))}
                 </Bar>
@@ -210,29 +237,26 @@ export default function AlertsView() {
 
       </div>
 
-      {/* 3. Filter Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft flex flex-col md:flex-row items-center justify-between gap-3">
-        
+      {/* 3. Filter Bar (Velzon Card) */}
+      <div className="velzon-card p-3 flex flex-col md:flex-row items-center justify-between gap-3">
         {/* Search */}
         <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+          <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#878A99]" />
           <input
             type="text"
-            placeholder="Search alerts or miners..."
+            placeholder="Search alerts, miners or messages..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            className="w-full pl-8 pr-3 py-1.5 text-xs rounded border border-[#E9EBEC] bg-[#F8FAFC] focus:bg-white focus:outline-none focus:border-[#176B87] transition-colors"
           />
         </div>
 
-        {/* Filter Pills */}
+        {/* Filter Controls */}
         <div className="flex flex-wrap items-center gap-2 w-full md:w-auto text-xs">
-          
-          {/* Status Filter */}
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-medium text-slate-700 focus:outline-none"
+            className="px-2.5 py-1.5 rounded border border-[#E9EBEC] bg-white text-[#495057] focus:outline-none text-xs"
           >
             <option value="ALL">All Status</option>
             <option value="ACTIVE">Active (Unacknowledged)</option>
@@ -240,11 +264,10 @@ export default function AlertsView() {
             <option value="RESOLVED">Resolved</option>
           </select>
 
-          {/* Severity Filter */}
           <select
             value={filterSeverity}
             onChange={(e) => setFilterSeverity(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-medium text-slate-700 focus:outline-none"
+            className="px-2.5 py-1.5 rounded border border-[#E9EBEC] bg-white text-[#495057] focus:outline-none text-xs"
           >
             <option value="ALL">All Severities</option>
             <option value="CRITICAL">Critical</option>
@@ -252,11 +275,10 @@ export default function AlertsView() {
             <option value="INFO">Info</option>
           </select>
 
-          {/* Type Filter */}
           <select
             value={filterType}
             onChange={(e) => setFilterType(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-medium text-slate-700 focus:outline-none"
+            className="px-2.5 py-1.5 rounded border border-[#E9EBEC] bg-white text-[#495057] focus:outline-none text-xs"
           >
             <option value="ALL">All Types</option>
             <option value="GAS">Gas Index</option>
@@ -267,17 +289,16 @@ export default function AlertsView() {
             <option value="OFFLINE">Offline Status</option>
             <option value="BATTERY">Battery Low</option>
           </select>
-
         </div>
       </div>
 
-      {/* 4. Alerts Log Table */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-soft overflow-hidden">
+      {/* 4. Alerts Audit Table (Velzon Table) */}
+      <div className="velzon-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
+          <table className="w-full text-left text-xs text-[#878A99]">
+            <thead className="bg-[#F3F6F9] text-[#495057] font-semibold uppercase text-[11px] tracking-wider border-b border-[#E9EBEC]">
               <tr>
-                <th className="p-4 w-10">
+                <th className="p-3.5 w-10">
                   <input
                     type="checkbox"
                     checked={selectedAlerts.length > 0 && selectedAlerts.length === filtered.length}
@@ -285,79 +306,86 @@ export default function AlertsView() {
                       if (e.target.checked) setSelectedAlerts(filtered.map(a => a.id));
                       else setSelectedAlerts([]);
                     }}
-                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    className="rounded border-[#E9EBEC] text-[#176B87] focus:ring-[#176B87]"
                   />
                 </th>
-                <th className="p-4">Severity & Type</th>
-                <th className="p-4">Worker & Zone</th>
-                <th className="p-4">Event Description</th>
-                <th className="p-4">Timestamp</th>
-                <th className="p-4">Status & Ack</th>
-                <th className="p-4 text-right">Actions</th>
+                <th className="p-3.5">Severity &amp; Type</th>
+                <th className="p-3.5">Unit &amp; Zone</th>
+                <th className="p-3.5">Event Description</th>
+                <th className="p-3.5">Timestamp</th>
+                <th className="p-3.5">Status</th>
+                <th className="p-3.5 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-[#E9EBEC]">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="p-8 text-center text-slate-400">
+                  <td colSpan="7" className="p-8 text-center text-[#878A99]">
                     No alert records match the selected filters.
                   </td>
                 </tr>
               ) : (
                 filtered.map(alert => (
-                  <tr key={alert.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="p-4">
+                  <tr key={alert.id} className="hover:bg-[#F8FAFB] transition-colors">
+                    <td className="p-3.5">
                       <input
                         type="checkbox"
                         checked={selectedAlerts.includes(alert.id)}
                         onChange={() => toggleSelect(alert.id)}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-[#E9EBEC] text-[#176B87] focus:ring-[#176B87]"
                       />
                     </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide ${
+                    <td className="p-3.5 whitespace-nowrap">
+                      <span className={
                         alert.severity === 'CRITICAL'
-                          ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                          ? 'badge-soft-danger'
                           : alert.severity === 'WARNING'
-                          ? 'bg-amber-100 text-amber-700 border border-amber-200'
-                          : 'bg-blue-100 text-blue-700 border border-blue-200'
-                      }`}>
+                          ? 'badge-soft-warning'
+                          : 'badge-soft-info'
+                      }>
                         {alert.severity} • {alert.type}
                       </span>
                     </td>
-                    <td className="p-4 whitespace-nowrap">
-                      <div className="font-bold text-slate-800">{alert.worker_name || alert.worker_id}</div>
-                      <div className="text-[10px] text-slate-400">{alert.worker_zone || 'Sector 4'}</div>
+                    <td className="p-3.5 whitespace-nowrap">
+                      <div className="flex items-center space-x-1.5">
+                        <span className="font-semibold text-[#212529]">{alert.worker_name || alert.worker_id}</span>
+                        {alert.is_demo && (
+                          <span className="badge-soft-warning text-[9px]">
+                            DEMO
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-[#878A99]">{alert.worker_zone || 'Sector 4'}</div>
                     </td>
-                    <td className="p-4 font-medium text-slate-800 max-w-xs">
+                    <td className="p-3.5 font-medium text-[#495057] max-w-sm">
                       {alert.message}
                     </td>
-                    <td className="p-4 whitespace-nowrap text-slate-500 text-[11px]">
+                    <td className="p-3.5 whitespace-nowrap text-[#878A99] text-[11px]">
                       {new Date(alert.ts).toLocaleString()}
                     </td>
-                    <td className="p-4 whitespace-nowrap">
+                    <td className="p-3.5 whitespace-nowrap">
                       {alert.resolved_at ? (
-                        <span className="text-emerald-600 font-semibold flex items-center space-x-1">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        <span className="badge-soft-success flex items-center space-x-1 w-fit">
+                          <CheckCircle2 className="h-3 w-3" />
                           <span>Resolved</span>
                         </span>
                       ) : alert.acknowledged ? (
-                        <span className="text-blue-600 font-semibold flex items-center space-x-1">
-                          <Check className="h-3.5 w-3.5" />
+                        <span className="badge-soft-info flex items-center space-x-1 w-fit">
+                          <Check className="h-3 w-3" />
                           <span>Ack by {alert.acknowledged_by}</span>
                         </span>
                       ) : (
-                        <span className="text-rose-600 font-bold flex items-center space-x-1 animate-pulse">
-                          <AlertTriangle className="h-3.5 w-3.5" />
+                        <span className="badge-soft-danger flex items-center space-x-1 w-fit animate-pulse">
+                          <AlertTriangle className="h-3 w-3" />
                           <span>Unacknowledged</span>
                         </span>
                       )}
                     </td>
-                    <td className="p-4 whitespace-nowrap text-right space-x-2">
+                    <td className="p-3.5 whitespace-nowrap text-right space-x-1.5">
                       {!alert.acknowledged && !alert.resolved_at && (
                         <button
                           onClick={() => handleAcknowledge(alert.id)}
-                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-lg text-[11px] transition-colors"
+                          className="px-2.5 py-1 bg-white hover:bg-[#F3F6F9] text-[#495057] border border-[#E9EBEC] font-semibold rounded text-xs transition-colors shadow-2xs"
                         >
                           Ack
                         </button>
@@ -365,7 +393,7 @@ export default function AlertsView() {
                       {!alert.resolved_at && (
                         <button
                           onClick={() => handleResolve(alert.id)}
-                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 font-bold rounded-lg text-[11px] transition-colors"
+                          className="px-2.5 py-1 bg-[#E6F8F5] hover:bg-[#D5EFE3] text-[#0AB39C] border border-[#B9ECE3] font-semibold rounded text-xs transition-colors shadow-2xs"
                         >
                           Resolve
                         </button>

@@ -1,36 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sliders, Save, RefreshCw, Bell, Volume2, 
-  Database, Shield, CheckCircle2, Zap, Clock
+  Sliders, Shield, Volume2, Database, Save, 
+  RefreshCw, Check, AlertTriangle, Key, Cpu, Radio, Clock
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 
 export default function SettingsView() {
   const { 
-    thresholds, 
-    refreshData, 
     soundEnabled, 
     setSoundEnabled, 
     unitCelsius, 
-    setUnitCelsius, 
-    demoMode, 
-    setDemoMode,
-    addToast
+    setUnitCelsius,
+    addToast,
+    refreshData
   } = useApp();
 
   const [thresholdList, setThresholdList] = useState([]);
-  const [historyInterval, setHistoryInterval] = useState(10);
-  const [offlineTimeout, setOfflineTimeout] = useState(30);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // Ingestion write-budget settings
+  const [historyInterval, setHistoryInterval] = useState(10);
+  const [offlineTimeout, setOfflineTimeout] = useState(45);
+
+  const fetchThresholds = async () => {
+    setLoading(true);
+    try {
+      const data = await api.getThresholds();
+      setThresholdList(data || []);
+    } catch (err) {
+      console.error('Failed to load thresholds:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setThresholdList(thresholds);
-    api.getSystemConfig().then(cfg => {
-      if (cfg.history_interval_sec) setHistoryInterval(cfg.history_interval_sec);
-      if (cfg.offline_timeout_sec) setOfflineTimeout(cfg.offline_timeout_sec);
-    }).catch(() => {});
-  }, [thresholds]);
+    fetchThresholds();
+  }, []);
 
   const handleThresholdChange = (key, field, value) => {
     setThresholdList(prev => prev.map(t => {
@@ -45,21 +53,22 @@ export default function SettingsView() {
     e.preventDefault();
     setSaving(true);
     try {
-      await Promise.all([
-        api.updateThresholds(thresholdList),
-        api.updateSystemConfig({
-          history_interval_sec: historyInterval,
-          offline_timeout_sec: offlineTimeout
-        })
-      ]);
+      for (const t of thresholdList) {
+        await api.updateThreshold(t.key, {
+          warning: Number(t.warning),
+          critical: Number(t.critical),
+          enabled: Boolean(t.enabled)
+        });
+      }
+
       addToast({
         type: 'success',
         title: 'Settings Saved',
-        message: 'Thresholds and operational parameters successfully updated in database.'
+        message: 'Safety thresholds and gateway configuration updated successfully.'
       });
       refreshData();
     } catch (err) {
-      console.error('Failed to save settings:', err);
+      console.error('Failed to update thresholds:', err);
       addToast({
         type: 'danger',
         title: 'Error Saving Settings',
@@ -71,37 +80,50 @@ export default function SettingsView() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-5 max-w-4xl">
       
-      {/* Header */}
-      <div>
-        <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center space-x-2">
-          <span>Safety Thresholds & System Preferences</span>
-        </h2>
-        <p className="text-xs text-slate-500 mt-0.5">
-          Configure real-time alert trigger parameters, persistence intervals, and dashboard telemetry units
-        </p>
+      {/* 1. Velzon Breadcrumb Header Row */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[#E9EBEC] gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-semibold text-[#495057]">
+            Safety thresholds &amp; gateway parameters
+          </h1>
+          <span className="badge-soft-info text-[11px]">
+            Gateway config
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-1.5 text-xs text-[#878A99]">
+          <span>MineGuard</span>
+          <span>/</span>
+          <span>Settings</span>
+          <span>/</span>
+          <span className="text-[#176B87] font-medium">Configuration</span>
+        </div>
       </div>
 
-      <form onSubmit={handleSaveSettings} className="space-y-6">
+      <form onSubmit={handleSaveSettings} className="space-y-5">
         
-        {/* 1. Alarm & Warning Thresholds */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft space-y-4">
-          <div className="flex items-center space-x-2">
-            <Sliders className="h-5 w-5 text-blue-600" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Sensor Alarm Rules & Trigger Levels
-            </h4>
+        {/* 1. Alarm & Warning Thresholds (Velzon Card) */}
+        <div className="velzon-card">
+          <div className="velzon-card-header">
+            <div className="flex items-center space-x-2">
+              <Sliders className="h-4 w-4 text-[#176B87]" />
+              <h2 className="velzon-card-title">
+                Sensor alarm trigger boundaries
+              </h2>
+            </div>
+            <span className="text-xs text-[#878A99]">Hardware telemetry limits</span>
           </div>
 
-          <div className="space-y-3 divide-y divide-slate-100 text-xs">
+          <div className="velzon-card-body space-y-3 divide-y divide-[#F3F6F9] text-xs">
             {thresholdList.map(t => (
               <div key={t.key} className="pt-3 first:pt-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
-                  <span className="font-bold text-slate-800 uppercase tracking-wide text-[11px]">
+                  <span className="font-medium text-[#212529] capitalize text-xs">
                     {t.key.replace(/_/g, ' ')}
                   </span>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-[#878A99] font-mono">
                     {t.key === 'gas_index' && 'MQ-2 / MQ-5 voltage divider reading (mV)'}
                     {t.key === 'heart_rate_high' && 'Tachycardia alert boundary (BPM)'}
                     {t.key === 'heart_rate_low' && 'Bradycardia alert boundary (BPM)'}
@@ -115,22 +137,22 @@ export default function SettingsView() {
 
                 <div className="flex items-center space-x-3">
                   <div className="flex items-center space-x-1.5">
-                    <span className="text-slate-500 font-medium">Warn:</span>
+                    <span className="text-[#878A99] font-mono text-[11px]">WARN:</span>
                     <input
                       type="number"
                       value={t.warning ?? ''}
                       onChange={(e) => handleThresholdChange(t.key, 'warning', Number(e.target.value))}
-                      className="w-20 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-right font-mono font-bold text-slate-800 focus:bg-white"
+                      className="w-20 px-2 py-1 rounded border border-[#E9EBEC] bg-[#F8FAFC] text-right font-mono font-bold text-[#212529] focus:bg-white focus:outline-none focus:border-[#176B87]"
                     />
                   </div>
 
                   <div className="flex items-center space-x-1.5">
-                    <span className="text-slate-500 font-medium">Crit:</span>
+                    <span className="text-[#F06548] font-mono text-[11px]">CRIT:</span>
                     <input
                       type="number"
                       value={t.critical ?? ''}
                       onChange={(e) => handleThresholdChange(t.key, 'critical', Number(e.target.value))}
-                      className="w-20 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-right font-mono font-bold text-rose-600 focus:bg-white"
+                      className="w-20 px-2 py-1 rounded border border-[#FACCC3] bg-[#FDEEEB] text-right font-mono font-bold text-[#F06548] focus:bg-white focus:outline-none focus:border-[#F06548]"
                     />
                   </div>
 
@@ -139,7 +161,7 @@ export default function SettingsView() {
                       type="checkbox"
                       checked={!!t.enabled}
                       onChange={(e) => handleThresholdChange(t.key, 'enabled', e.target.checked)}
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="rounded border-[#E9EBEC] text-[#176B87] focus:ring-[#176B87] h-4 w-4"
                     />
                   </label>
                 </div>
@@ -148,119 +170,106 @@ export default function SettingsView() {
           </div>
         </div>
 
-        {/* 2. Write Budget & Telemetry Pipeline Rules */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft space-y-4">
-          <div className="flex items-center space-x-2">
-            <Database className="h-5 w-5 text-indigo-600" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Database Write Budget & Storage Optimization
-            </h4>
+        {/* 2. Gateway Storage & Sampling Budget (Velzon Card) */}
+        <div className="velzon-card">
+          <div className="velzon-card-header">
+            <div className="flex items-center space-x-2">
+              <Database className="h-4 w-4 text-[#176B87]" />
+              <h2 className="velzon-card-title">
+                Telemetry sampling &amp; ingestion write-budget
+              </h2>
+            </div>
+            <span className="badge-soft-info text-[11px]">Storage policy</span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                History Persistence Interval (Seconds)
-              </label>
+          <div className="velzon-card-body grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="p-3.5 bg-[#F8FAFC] rounded-md border border-[#E9EBEC] space-y-1.5">
+              <label className="font-semibold text-[#495057] block">History Write Interval (Seconds)</label>
               <input
                 type="number"
-                min="2"
-                max="300"
                 value={historyInterval}
                 onChange={(e) => setHistoryInterval(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono font-bold text-slate-800"
+                min="5"
+                max="300"
+                className="w-full px-3 py-1.5 rounded border border-[#E9EBEC] bg-white font-mono text-[#212529] focus:outline-none focus:border-[#176B87]"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Only records history periodically or on triggered alert to preserve Firestore free tier quota.
+              <p className="text-[11px] text-[#878A99]">
+                Nominal telemetry is persisted to disk every N seconds (Default: 10s write budget). Critical alerts persist immediately.
               </p>
             </div>
 
-            <div>
-              <label className="block font-bold text-slate-700 mb-1">
-                Worker Offline Timeout (Seconds)
-              </label>
+            <div className="p-3.5 bg-[#F8FAFC] rounded-md border border-[#E9EBEC] space-y-1.5">
+              <label className="font-semibold text-[#495057] block">Offline Timeout Guard (Seconds)</label>
               <input
                 type="number"
-                min="5"
-                max="600"
                 value={offlineTimeout}
                 onChange={(e) => setOfflineTimeout(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 font-mono font-bold text-slate-800"
+                min="15"
+                max="600"
+                className="w-full px-3 py-1.5 rounded border border-[#E9EBEC] bg-white font-mono text-[#212529] focus:outline-none focus:border-[#176B87]"
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Workers without telemetry packets for this duration transition to grey OFFLINE state.
+              <p className="text-[11px] text-[#878A99]">
+                Duration before physical hardware helmet without packet is marked offline (Default: 45s).
               </p>
             </div>
           </div>
         </div>
 
-        {/* 3. Audio & Unit Preferences */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft space-y-4">
-          <div className="flex items-center space-x-2">
-            <Volume2 className="h-5 w-5 text-emerald-600" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              User Interface & Audio Preferences
-            </h4>
+        {/* 3. Operator Interface Preferences (Velzon Card) */}
+        <div className="velzon-card">
+          <div className="velzon-card-header">
+            <div className="flex items-center space-x-2">
+              <Volume2 className="h-4 w-4 text-[#176B87]" />
+              <h4 className="velzon-card-title">
+                Supervisor Console Sound &amp; Unit Options
+              </h4>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
-            
-            {/* Audio Toggle */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+          <div className="velzon-card-body space-y-3.5 text-xs">
+            <div className="flex items-center justify-between">
               <div>
-                <span className="font-bold text-slate-800">Emergency Audio</span>
-                <p className="text-[11px] text-slate-400">Beep on critical alerts</p>
+                <span className="font-semibold text-[#495057]">Audible Alert Siren</span>
+                <p className="text-[11px] text-[#878A99]">Play synthetic sound alert when Critical SOS, Fall, or Gas breach arrives</p>
               </div>
               <input
                 type="checkbox"
                 checked={soundEnabled}
                 onChange={(e) => setSoundEnabled(e.target.checked)}
-                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4"
+                className="rounded border-[#E9EBEC] text-[#176B87] focus:ring-[#176B87] h-4 w-4"
               />
             </div>
 
-            {/* Units */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+            <div className="flex items-center justify-between pt-3 border-t border-[#F3F6F9]">
               <div>
-                <span className="font-bold text-slate-800">Temperature Unit</span>
-                <p className="text-[11px] text-slate-400">{unitCelsius ? 'Celsius (°C)' : 'Fahrenheit (°F)'}</p>
+                <span className="font-semibold text-[#495057]">Temperature Measurement Scale</span>
+                <p className="text-[11px] text-[#878A99]">Display shaft telemetry in Celsius (°C) vs Fahrenheit (°F)</p>
               </div>
               <button
                 type="button"
                 onClick={() => setUnitCelsius(!unitCelsius)}
-                className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-bold text-xs shadow-sm"
+                className="px-3 py-1 bg-white border border-[#E9EBEC] hover:bg-[#F3F6F9] font-mono text-xs font-bold text-[#495057] rounded shadow-2xs"
               >
-                {unitCelsius ? '°C' : '°F'}
+                {unitCelsius ? '°C (Celsius)' : '°F (Fahrenheit)'}
               </button>
             </div>
-
-            {/* Mode */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
-              <div>
-                <span className="font-bold text-slate-800">Telemetry Source</span>
-                <p className="text-[11px] text-slate-400">{demoMode ? 'Live / Simulator' : 'Hardware Only'}</p>
-              </div>
-              <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded font-bold text-[10px]">
-                Active
-              </span>
-            </div>
-
           </div>
         </div>
 
-        {/* Save button */}
-        <div className="flex justify-end">
+        {/* Save Bar */}
+        <div className="flex justify-end pt-2">
           <button
             type="submit"
             disabled={saving}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs shadow-glow-primary transition-all flex items-center space-x-1.5"
+            className="px-5 py-2.5 bg-[#176B87] hover:bg-[#12566D] text-white font-semibold text-xs rounded shadow-sm transition-colors flex items-center space-x-2"
           >
             <Save className="h-4 w-4" />
-            <span>{saving ? 'Saving...' : 'Save System Settings'}</span>
+            <span>{saving ? 'Updating Boundaries...' : 'Save Configuration'}</span>
           </button>
         </div>
 
       </form>
+
     </div>
   );
 }

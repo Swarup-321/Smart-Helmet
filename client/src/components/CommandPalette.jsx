@@ -14,7 +14,6 @@ export default function CommandPalette({ isOpen, onClose, onNavigateTab, onSelec
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         if (isOpen) onClose();
-        else window.dispatchEvent(new CustomEvent('mineguard:open-command-palette'));
       }
       if (e.key === 'Escape' && isOpen) {
         onClose();
@@ -38,91 +37,97 @@ export default function CommandPalette({ isOpen, onClose, onNavigateTab, onSelec
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-start justify-center pt-20 p-4">
-      <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-start justify-center pt-20 p-4">
+      <div className="bg-white rounded-lg max-w-xl w-full shadow-dropdown border border-[#E9EBEC] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         
-        {/* Search Input */}
-        <div className="flex items-center px-4 py-3.5 border-b border-slate-100">
-          <Search className="h-5 w-5 text-slate-400 mr-3" />
+        {/* Search Input (Velzon Header) */}
+        <div className="flex items-center px-4 py-3 border-b border-[#E9EBEC] bg-[#F8FAFC]">
+          <Search className="h-4 w-4 text-[#878A99] mr-3" />
           <input
             type="text"
             autoFocus
-            placeholder="Type a command, miner name, zone, or incident..."
+            placeholder="Search helmets, zones, commands, or telemetry alarms..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none"
+            className="w-full text-xs font-sans font-medium text-[#212529] placeholder:text-[#878A99] focus:outline-none bg-transparent"
           />
-          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-slate-600">
+          <button onClick={onClose} className="p-1 rounded text-[#878A99] hover:text-[#212529]">
             <X className="h-4 w-4" />
           </button>
         </div>
 
         {/* Results List */}
-        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-slate-50 text-xs">
+        <div className="max-h-80 overflow-y-auto p-2 divide-y divide-[#F3F6F9] text-xs">
           
           {/* Quick Navigation Section */}
-          <div className="p-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-              Quick Views
+          <div className="p-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#878A99] mb-1 px-2">
+              NAVIGATION
             </div>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               <button
                 onClick={() => { onNavigateTab('overview'); onClose(); }}
-                className="w-full p-2 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 font-semibold"
+                className="w-full flex items-center justify-between p-2 rounded hover:bg-[#F3F6F9] text-left text-[#495057] transition-colors"
               >
                 <div className="flex items-center space-x-2">
-                  <Activity className="h-4 w-4 text-blue-500" />
-                  <span>Main Safety Overview</span>
+                  <Activity className="h-3.5 w-3.5 text-[#176B87]" />
+                  <span>Operations Overview</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                <ArrowRight className="h-3 w-3 text-[#878A99]" />
               </button>
-
+              <button
+                onClick={() => { onNavigateTab('workers'); onClose(); }}
+                className="w-full flex items-center justify-between p-2 rounded hover:bg-[#F3F6F9] text-left text-[#495057] transition-colors"
+              >
+                <div className="flex items-center space-x-2">
+                  <HardHat className="h-3.5 w-3.5 text-[#176B87]" />
+                  <span>Miners &amp; Smart Helmets Provisioning</span>
+                </div>
+                <ArrowRight className="h-3 w-3 text-[#878A99]" />
+              </button>
               <button
                 onClick={() => { onNavigateTab('alerts'); onClose(); }}
-                className="w-full p-2 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 font-semibold"
+                className="w-full flex items-center justify-between p-2 rounded hover:bg-[#F3F6F9] text-left text-[#495057] transition-colors"
               >
                 <div className="flex items-center space-x-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  <span>Alert Audit Log</span>
+                  <ShieldAlert className="h-3.5 w-3.5 text-[#F06548]" />
+                  <span>Incident &amp; Alarm Log</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                <ArrowRight className="h-3 w-3 text-[#878A99]" />
               </button>
-
               <button
-                onClick={() => { onNavigateTab('analytics'); onClose(); }}
-                className="w-full p-2 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 font-semibold"
+                onClick={() => { onNavigateTab('settings'); onClose(); }}
+                className="w-full flex items-center justify-between p-2 rounded hover:bg-[#F3F6F9] text-left text-[#495057] transition-colors"
               >
                 <div className="flex items-center space-x-2">
-                  <Radio className="h-4 w-4 text-indigo-500" />
-                  <span>Analytics & Trends</span>
+                  <Settings className="h-3.5 w-3.5 text-[#176B87]" />
+                  <span>Gateway Settings &amp; Safety Thresholds</span>
                 </div>
-                <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+                <ArrowRight className="h-3 w-3 text-[#878A99]" />
               </button>
             </div>
           </div>
 
-          {/* Miners Section */}
+          {/* Miners List Results */}
           {filteredWorkers.length > 0 && (
-            <div className="p-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                Miners & Telemetry
+            <div className="p-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#878A99] mb-1 px-2">
+                MINERS &amp; HELMETS
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {filteredWorkers.map(w => (
                   <button
                     key={w.worker.id}
                     onClick={() => { onSelectWorker(w.worker.id); onClose(); }}
-                    className="w-full p-2 rounded-xl flex items-center justify-between hover:bg-slate-50 text-left"
+                    className="w-full flex items-center justify-between p-2 rounded hover:bg-[#F3F6F9] text-left text-[#495057] transition-colors"
                   >
-                    <div className="flex items-center space-x-2">
-                      <HardHat className="h-4 w-4 text-slate-600" />
-                      <div>
-                        <span className="font-bold text-slate-800">{w.worker.name}</span>
-                        <span className="text-[11px] text-slate-400 ml-2">{w.worker.zone}</span>
-                      </div>
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <HardHat className="h-3.5 w-3.5 text-[#176B87] flex-shrink-0" />
+                      <span className="font-semibold truncate">{w.worker.name}</span>
+                      <span className="text-[10px] text-[#878A99] font-mono">{w.worker.id} • {w.worker.zone}</span>
                     </div>
-                    <span className="font-mono text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-600">
-                      {w.worker.id}
+                    <span className={w.status === 'online' ? 'badge-soft-success text-[10px]' : 'badge-soft-dark text-[10px]'}>
+                      {w.status}
                     </span>
                   </button>
                 ))}
@@ -130,25 +135,27 @@ export default function CommandPalette({ isOpen, onClose, onNavigateTab, onSelec
             </div>
           )}
 
-          {/* Active Alerts */}
+          {/* Active Incidents Results */}
           {filteredAlerts.length > 0 && (
-            <div className="p-2">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-rose-500 mb-1">
-                Active Critical Incidents
+            <div className="p-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-[#878A99] mb-1 px-2">
+                ACTIVE SAFETY ALERTS
               </div>
-              <div className="space-y-1">
-                {filteredAlerts.slice(0, 3).map(a => (
-                  <button
+              <div className="space-y-0.5">
+                {filteredAlerts.map(a => (
+                  <div
                     key={a.id}
                     onClick={() => { onNavigateTab('alerts'); onClose(); }}
-                    className="w-full p-2 rounded-xl flex items-center justify-between hover:bg-rose-50/50 text-left"
+                    className="p-2 rounded hover:bg-[#F3F6F9] cursor-pointer flex items-center justify-between text-[#495057]"
                   >
-                    <div className="flex items-center space-x-2">
-                      <ShieldAlert className="h-4 w-4 text-rose-600 animate-pulse" />
-                      <span className="font-medium text-slate-800 truncate max-w-sm">{a.message}</span>
+                    <div className="flex items-center space-x-2 min-w-0">
+                      <AlertTriangle className="h-3.5 w-3.5 text-[#F06548] flex-shrink-0" />
+                      <span className="truncate">{a.message}</span>
                     </div>
-                    <span className="text-[10px] font-bold text-rose-600">{a.type}</span>
-                  </button>
+                    <span className={a.severity === 'CRITICAL' ? 'badge-soft-danger text-[9px]' : 'badge-soft-warning text-[9px]'}>
+                      {a.severity}
+                    </span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -157,9 +164,9 @@ export default function CommandPalette({ isOpen, onClose, onNavigateTab, onSelec
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-          <span>Navigate with arrows / click to open</span>
-          <span>ESC to dismiss</span>
+        <div className="px-4 py-2.5 bg-[#F8FAFC] border-t border-[#E9EBEC] text-[11px] text-[#878A99] flex items-center justify-between">
+          <span>Tip: Use <kbd className="px-1 py-0.5 bg-white border border-[#E9EBEC] rounded font-mono">↑</kbd> <kbd className="px-1 py-0.5 bg-white border border-[#E9EBEC] rounded font-mono">↓</kbd> to navigate</span>
+          <span>Press <kbd className="px-1 py-0.5 bg-white border border-[#E9EBEC] rounded font-mono">ESC</kbd> to close</span>
         </div>
 
       </div>

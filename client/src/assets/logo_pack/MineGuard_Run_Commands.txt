@@ -1,0 +1,48 @@
+MINEGUARD — START THE FULL LOCAL WEBSITE
+=======================================
+
+Open THREE separate PowerShell terminals in:
+C:\Users\abuna\Desktop\clg\IOT\Smart-Helmet
+
+Terminal 1 — Python ML service (port 8000)
+------------------------------------------
+py -3.14 -m uvicorn ml_service.main:app --host 127.0.0.1 --port 8000
+
+Health check:
+http://localhost:8000/health
+
+Terminal 2 — Express backend (port 5000)
+----------------------------------------
+npm run dev --workspace=server
+
+Terminal 3 — React dashboard (port 5173)
+----------------------------------------
+npm run dev --workspace=client
+
+Open in browser:
+http://localhost:5173/
+
+Optional Terminal 4 — background fleet telemetry simulator
+----------------------------------------------------------
+node server/src/simulator/simulate.js
+
+Use the optional simulator only if desired; it can add background telemetry for demo workers.
+Check the dashboard after starting it so simulated and physical workers remain distinguishable.
+
+Physical ESP32 check
+--------------------
+- In sketch_oct2a/sketch_oct2a.ino, ensure SERVER_URL uses the laptop's current Wi-Fi IPv4 address:
+  http://192.168.X.X:5000/api/readings
+- Find the address with ipconfig.
+- The ESP32 and laptop must be able to reach each other over the same network.
+- Do not use 127.0.0.1 or localhost in the ESP32's SERVER_URL; those refer to the ESP32 itself.
+- Verify WORKER_ID matches the actual device record (the supplied note says W006).
+- Keep DEVICE_API_KEY private; rotate it if it has been exposed outside the project.
+
+Quick failure checks
+--------------------
+- If a port is already in use, inspect it first:
+  Get-NetTCPConnection -LocalPort 5000,8000,5173 -State Listen
+- Do not stop random processes. Stop only the process you have identified as stale.
+- If the ML panel says insufficient history, it waits for at least 60 readings for that device.
+- The hackathon risk-stepper is a simulated UI scenario; its illustrative score must not be presented as actual model inference.

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Search, Shield, AlertTriangle, Users, HardHat, 
   Settings, Activity, Radio, Bell, LogOut, Command, 
-  Wifi, WifiOff, Volume2, VolumeX, Moon, Sun, ArrowRight, X
+  Wifi, WifiOff, Volume2, VolumeX, Moon, Sun, ArrowRight, X, Waves
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -50,7 +50,7 @@ export default function Header({ currentTab, setCurrentTab, onOpenCommandPalette
           <nav className="hidden md:flex items-center space-x-1 bg-slate-100/80 p-1 rounded-xl border border-slate-200/60">
             <button
               onClick={() => setCurrentTab('overview')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
                 currentTab === 'overview'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -61,8 +61,20 @@ export default function Header({ currentTab, setCurrentTab, onOpenCommandPalette
             </button>
 
             <button
-              onClick={() => setCurrentTab('workers')}
+              onClick={() => setCurrentTab('fixed-zone')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
+                currentTab === 'fixed-zone'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+              }`}
+            >
+              <Waves className="h-4 w-4" />
+              <span>Fixed Zone Monitoring</span>
+            </button>
+
+            <button
+              onClick={() => setCurrentTab('workers')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
                 currentTab === 'workers' || currentTab === 'worker-detail'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -74,7 +86,7 @@ export default function Header({ currentTab, setCurrentTab, onOpenCommandPalette
 
             <button
               onClick={() => setCurrentTab('alerts')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 relative ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 relative ${
                 currentTab === 'alerts'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -93,7 +105,7 @@ export default function Header({ currentTab, setCurrentTab, onOpenCommandPalette
 
             <button
               onClick={() => setCurrentTab('analytics')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
                 currentTab === 'analytics'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
@@ -105,7 +117,7 @@ export default function Header({ currentTab, setCurrentTab, onOpenCommandPalette
 
             <button
               onClick={() => setCurrentTab('settings')}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-200 flex items-center space-x-1.5 ${
                 currentTab === 'settings'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'

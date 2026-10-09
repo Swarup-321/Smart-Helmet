@@ -56,6 +56,24 @@ async function seedHistoryData() {
       const spo2 = Math.min(99, Math.max(93, Math.round(98 + (Math.random() * 2 - 1))));
       const ldrRaw = Math.round(1800 + Math.random() * 600);
 
+      // HW-072 Vibration Simulation
+      let baseVib = 1;
+      if (worker.zone.includes('Extraction')) baseVib = 8;
+      else if (worker.zone.includes('Conveyor')) baseVib = 4;
+      else if (worker.zone.includes('Drift')) baseVib = 3;
+      else if (worker.zone.includes('Shaft')) baseVib = 2;
+      else baseVib = 0;
+
+      let vibEvents = Math.max(0, baseVib + Math.round(Math.random() * 4 - 2));
+      if (worker.id === 'W003' && hour >= 10 && hour <= 12) vibEvents += 5; // morning drilling wave
+
+      let vibLevel = 'NORMAL';
+      let vibStatus = 'SAFE';
+      if (vibEvents >= 21) { vibLevel = 'CRITICAL'; vibStatus = 'CRITICAL'; }
+      else if (vibEvents >= 11) { vibLevel = 'HIGH'; vibStatus = 'WARNING'; }
+      else if (vibEvents >= 6) { vibLevel = 'MODERATE'; vibStatus = 'MONITOR'; }
+      else if (vibEvents >= 3) { vibLevel = 'LOW'; vibStatus = 'NORMAL'; }
+
       allReadings.push({
         worker_id: worker.id,
         ts: dateObj.toISOString(),
@@ -74,7 +92,12 @@ async function seedHistoryData() {
         communication: 'wifi',
         gateway_id: 'direct',
         rssi: -60 - Math.round(Math.random() * 15),
-        snr: null
+        snr: null,
+        vibration_detected: vibEvents > 0,
+        vibration_events: vibEvents,
+        vibration_level: vibLevel,
+        vibration_status: vibStatus,
+        zone_id: worker.zone
       });
 
       // Keep latest state updated
@@ -82,6 +105,7 @@ async function seedHistoryData() {
         await db.saveLatestReading(worker.id, {
           worker_id: worker.id,
           helmet_id: worker.helmet_id,
+          zone_id: worker.zone,
           temperature: temp,
           humidity,
           mq2_mv: mq2Mv,
@@ -98,6 +122,10 @@ async function seedHistoryData() {
           gateway_id: 'direct',
           rssi: -65,
           snr: null,
+          vibration_detected: vibEvents > 0,
+          vibration_events: vibEvents,
+          vibration_level: vibLevel,
+          vibration_status: vibStatus,
           timestamp: dateObj.toISOString()
         });
       }

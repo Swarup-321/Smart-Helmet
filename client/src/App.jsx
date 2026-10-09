@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from './context/AppContext';
 import Header from './components/Header';
 import Overview from './components/Overview';
+import FixedZoneMonitoring from './components/FixedZoneMonitoring';
 import WorkerDetail from './components/WorkerDetail';
 import AlertsView from './components/AlertsView';
 import AnalyticsView from './components/AnalyticsView';
@@ -13,7 +14,7 @@ import ToastContainer from './components/ToastContainer';
 import { HardHat, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  const [currentTab, setCurrentTab] = useState('overview'); // 'overview' | 'workers' | 'worker-detail' | 'alerts' | 'analytics' | 'settings'
+  const [currentTab, setCurrentTab] = useState('overview'); // 'overview' | 'fixed-zone' | 'workers' | 'worker-detail' | 'alerts' | 'analytics' | 'settings'
   const [selectedWorkerId, setSelectedWorkerId] = useState('W001');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const { isServerWaking, refreshData } = useApp();
@@ -47,8 +48,11 @@ export default function App() {
           <Overview
             onSelectWorker={handleSelectWorker}
             onNavigateAlerts={() => setCurrentTab('alerts')}
+            onNavigateFixedZone={() => setCurrentTab('fixed-zone')}
           />
         )}
+
+        {currentTab === 'fixed-zone' && <FixedZoneMonitoring />}
 
         {currentTab === 'worker-detail' && (
           <WorkerDetail

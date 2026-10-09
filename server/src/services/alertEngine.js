@@ -174,7 +174,28 @@ export class AlertEngine {
       }
     }
 
-    // 8. Predictive Gas Trend Alert
+    // 8. Ground / Structural Vibration Alert (HW-072)
+    if (reading.vibration_level === 'CRITICAL') {
+      const alert = await this.triggerAlert({
+        worker_id: workerId,
+        type: 'VIBRATION',
+        severity: 'CRITICAL',
+        message: `CRITICAL VIBRATION: Severe ground/structural vibration spike (${reading.vibration_events || 0} events/10s) detected! Immediate zone inspection required.`,
+        value: reading.vibration_events || 0
+      });
+      if (alert) alertsGenerated.push(alert);
+    } else if (reading.vibration_level === 'HIGH') {
+      const alert = await this.triggerAlert({
+        worker_id: workerId,
+        type: 'VIBRATION',
+        severity: 'WARNING',
+        message: `ELEVATED VIBRATION: Structural/Ground vibration elevated (${reading.vibration_events || 0} events/10s) in ${workerId} zone.`,
+        value: reading.vibration_events || 0
+      });
+      if (alert) alertsGenerated.push(alert);
+    }
+
+    // 9. Predictive Gas Trend Alert
     if (recentReadings && recentReadings.length >= 5) {
       const gasWarning = gasThreshold?.warning || 2000;
       const prediction = predictTimeToThreshold(recentReadings, 'mq2_mv', gasWarning);

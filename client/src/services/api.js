@@ -130,6 +130,12 @@ class ApiService {
     return this.request(`/api/trends?worker_id=${workerId || ''}&metric=${metric}&window=${window}`);
   }
 
+  // Fixed Zone Monitoring & Vibration Safety Analysis
+  async getZoneMonitoring(zoneId) {
+    const query = zoneId ? `?zone_id=${encodeURIComponent(zoneId)}` : '';
+    return this.request(`/api/zone-monitoring${query}`);
+  }
+
   // Alerts
   async getAlerts(params = {}) {
     const query = new URLSearchParams(params).toString();

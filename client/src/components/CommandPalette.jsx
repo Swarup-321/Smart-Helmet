@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Search, HardHat, Activity, AlertTriangle, Settings, 
-  Radio, X, ArrowRight, ShieldAlert, Heart
+  Radio, X, ArrowRight, ShieldAlert, Heart, Waves
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -73,6 +73,17 @@ export default function CommandPalette({ isOpen, onClose, onNavigateTab, onSelec
                 <div className="flex items-center space-x-2">
                   <Activity className="h-4 w-4 text-blue-500" />
                   <span>Main Safety Overview</span>
+                </div>
+                <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
+              </button>
+
+              <button
+                onClick={() => { onNavigateTab('fixed-zone'); onClose(); }}
+                className="w-full p-2 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 font-semibold"
+              >
+                <div className="flex items-center space-x-2">
+                  <Waves className="h-4 w-4 text-blue-500" />
+                  <span>Fixed Zone Vibration Monitoring</span>
                 </div>
                 <ArrowRight className="h-3.5 w-3.5 text-slate-400" />
               </button>

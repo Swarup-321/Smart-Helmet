@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   Users, AlertTriangle, Heart, Thermometer, Flame, 
   Clock, ShieldAlert, CheckCircle2, RefreshCw, ChevronRight,
-  TrendingUp, Wifi, Gauge, ArrowUpRight, HardHat, Compass
+  TrendingUp, Wifi, Gauge, ArrowUpRight, HardHat, Compass, Waves
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
@@ -11,7 +11,7 @@ import {
   LineChart, Line, CartesianGrid
 } from 'recharts';
 
-export default function Overview({ onSelectWorker, onNavigateAlerts }) {
+export default function Overview({ onSelectWorker, onNavigateAlerts, onNavigateFixedZone }) {
   const { 
     workersLatest, 
     activeAlerts, 
@@ -336,16 +336,31 @@ export default function Overview({ onSelectWorker, onNavigateAlerts }) {
                     </div>
                   </div>
 
-                  {/* Atmospheric Pressure */}
+                  {/* HW-072 Vibration Activity */}
                   <div className="bg-slate-50/80 p-2 rounded-xl">
                     <div className="flex items-center justify-center space-x-1 text-[11px] text-slate-500">
-                      <Gauge className="h-3.5 w-3.5 text-indigo-500" />
-                      <span>Pressure</span>
+                      <Waves className={`h-3.5 w-3.5 ${
+                        reading?.vibration_level === 'CRITICAL' ? 'text-rose-500 animate-bounce' :
+                        reading?.vibration_level === 'HIGH' ? 'text-orange-500' :
+                        reading?.vibration_level === 'MODERATE' ? 'text-amber-500' :
+                        'text-indigo-500'
+                      }`} />
+                      <span>Vibration</span>
                     </div>
-                    <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                      {reading?.pressure
-                        ? `${reading.pressure} hPa`
-                        : <span className="text-xs font-normal text-slate-400">— hPa</span>}
+                    <div className="text-xs font-black text-slate-800 mt-0.5 truncate">
+                      {reading?.vibration_level ? (
+                        <span className={`px-1.5 py-0.2 rounded font-mono ${
+                          reading.vibration_level === 'CRITICAL' ? 'bg-rose-100 text-rose-700' :
+                          reading.vibration_level === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                          reading.vibration_level === 'MODERATE' ? 'bg-amber-100 text-amber-800' :
+                          reading.vibration_level === 'LOW' ? 'bg-blue-100 text-blue-700' :
+                          'bg-emerald-100 text-emerald-700'
+                        }`}>
+                          {reading.vibration_level} ({reading.vibration_events || 0})
+                        </span>
+                      ) : (
+                        <span className="text-xs font-normal text-slate-400">NORMAL (0)</span>
+                      )}
                     </div>
                   </div>
 

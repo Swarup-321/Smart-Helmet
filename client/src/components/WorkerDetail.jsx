@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Heart, Thermometer, Flame, Droplet, Sun, 
   Battery, Wifi, Phone, ShieldCheck, AlertTriangle, TrendingUp, 
-  Download, Clock, Activity, CheckCircle2, ChevronRight, Gauge
+  Download, Clock, Activity, CheckCircle2, ChevronRight, Gauge, Waves
 } from 'lucide-react';
 import { api } from '../services/api';
 import { useApp } from '../context/AppContext';
@@ -259,14 +259,29 @@ export default function WorkerDetail({ workerId, onBack }) {
           <span className="text-[10px] text-emerald-600 font-medium">Nominal: 60-100</span>
         </div>
 
-        {/* Atmospheric Pressure */}
+        {/* HW-072 Vibration Activity */}
         <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft text-center">
-          <Gauge className="h-5 w-5 text-indigo-500 mx-auto mb-1" />
-          <span className="text-xs text-slate-500 font-medium">Atm. Pressure</span>
-          <div className="text-xl font-extrabold text-slate-800 mt-1">
-            {liveReading.pressure ? `${liveReading.pressure} hPa` : <span className="text-sm font-semibold text-slate-400">— hPa</span>}
+          <Waves className={`h-5 w-5 mx-auto mb-1 ${
+            liveReading.vibration_level === 'CRITICAL' ? 'text-rose-500 animate-bounce' :
+            liveReading.vibration_level === 'HIGH' ? 'text-orange-500' :
+            liveReading.vibration_level === 'MODERATE' ? 'text-amber-500' :
+            'text-indigo-500'
+          }`} />
+          <span className="text-xs text-slate-500 font-medium">Vibration Activity</span>
+          <div className="text-lg font-extrabold text-slate-800 mt-1">
+            {liveReading.vibration_level ? (
+              <span className={`px-2 py-0.5 rounded-lg text-xs font-mono font-black ${
+                liveReading.vibration_level === 'CRITICAL' ? 'bg-rose-100 text-rose-700' :
+                liveReading.vibration_level === 'HIGH' ? 'bg-orange-100 text-orange-700' :
+                liveReading.vibration_level === 'MODERATE' ? 'bg-amber-100 text-amber-800' :
+                liveReading.vibration_level === 'LOW' ? 'bg-blue-100 text-blue-700' :
+                'bg-emerald-100 text-emerald-700'
+              }`}>
+                {liveReading.vibration_level} ({liveReading.vibration_events || 0} ev)
+              </span>
+            ) : 'NORMAL (0 ev)'}
           </div>
-          <span className="text-[10px] text-slate-400">Normal: 960–1060 hPa</span>
+          <span className="text-[10px] text-slate-400 font-mono mt-1 block">HW-072 Piezo</span>
         </div>
 
         {/* Temperature & Humidity */}

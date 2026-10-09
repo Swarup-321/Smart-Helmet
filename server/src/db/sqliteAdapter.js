@@ -60,6 +60,7 @@ export class SQLiteAdapter {
         if (err) return reject(err);
         try {
           await this.createTables();
+          await this.migrateSchema();
           await this.seedDefaults();
           resolve();
         } catch (setupErr) {
@@ -67,6 +68,18 @@ export class SQLiteAdapter {
         }
       });
     });
+  }
+
+  async migrateSchema() {
+    try {
+      const columns = await this.all(`PRAGMA table_info(readings)`);
+      const hasPressure = columns.some(c => c.name === 'pressure');
+      if (!hasPressure) {
+        await this.run(`ALTER TABLE readings ADD COLUMN pressure REAL`);
+      }
+    } catch (err) {
+      console.warn('SQLite migration warning (readings table):', err.message);
+    }
   }
 
   async createTables() {
@@ -95,6 +108,7 @@ export class SQLiteAdapter {
         ts TEXT NOT NULL,
         temperature REAL,
         humidity REAL,
+        pressure REAL,
         mq2_mv REAL,
         mq5_mv REAL,
         mq2_raw REAL,
@@ -109,6 +123,11 @@ export class SQLiteAdapter {
         gateway_id TEXT,
         rssi REAL,
         snr REAL,
+        vibration_detected INTEGER DEFAULT 0,
+        vibration_events INTEGER DEFAULT 0,
+        vibration_level TEXT DEFAULT 'NORMAL',
+        vibration_status TEXT DEFAULT 'SAFE',
+        zone_id TEXT,
         FOREIGN KEY (worker_id) REFERENCES workers(id) ON DELETE CASCADE
       );
 
@@ -147,6 +166,30 @@ export class SQLiteAdapter {
         role TEXT NOT NULL DEFAULT 'admin'
       );
     `);
+
+    // Auto-migration: ensure existing databases have the new columns before indexing
+    const columnsToEnsure = [
+      { name: 'pressure', type: 'REAL' },
+      { name: 'vibration_detected', type: 'INTEGER DEFAULT 0' },
+      { name: 'vibration_events', type: 'INTEGER DEFAULT 0' },
+      { name: 'vibration_level', type: 'TEXT DEFAULT "NORMAL"' },
+      { name: 'vibration_status', type: 'TEXT DEFAULT "SAFE"' },
+      { name: 'zone_id', type: 'TEXT' }
+    ];
+
+    for (const col of columnsToEnsure) {
+      try {
+        await this.run(`ALTER TABLE readings ADD COLUMN ${col.name} ${col.type}`);
+      } catch (colErr) {
+        // Column already exists - ignore duplicate column error
+      }
+    }
+
+    try {
+      await this.run(`CREATE INDEX IF NOT EXISTS idx_readings_vibration ON readings(vibration_level, ts)`);
+    } catch (idxErr) {
+      console.warn('Could not create vibration index:', idxErr.message);
+    }
   }
 
   async seedDefaults() {
@@ -182,19 +225,210 @@ export class SQLiteAdapter {
     const workerRow = await this.get('SELECT count(*) as count FROM workers');
     if (workerRow.count === 0) {
       const seedWorkers = [
-        { id: 'W001', name: 'Rajesh Kumar', helmet_id: 'H001', zone: 'Zone A - Shaft 3', phone: '+91 98765 43210', emergency_contact: 'Sunita Kumar (+91 98765 43211)', created_at: new Date().toISOString() },
-        { id: 'W002', name: 'Vikram Singh', helmet_id: 'H002', zone: 'Zone B - Drift 1', phone: '+91 98765 43212', emergency_contact: 'Anita Singh (+91 98765 43213)', created_at: new Date().toISOString() },
-        { id: 'W003', name: 'Amit Patel', helmet_id: 'H003', zone: 'Zone C - Extraction Face', phone: '+91 98765 43214', emergency_contact: 'Pooja Patel (+91 98765 43215)', created_at: new Date().toISOString() },
-        { id: 'W004', name: 'Suresh Raina', helmet_id: 'H004', zone: 'Zone B - Conveyor 2', phone: '+91 98765 43216', emergency_contact: 'Kavita Raina (+91 98765 43217)', created_at: new Date().toISOString() },
-        { id: 'W005', name: 'Dinesh Karthik', helmet_id: 'H005', zone: 'Main Access Gate', phone: '+91 98765 43218', emergency_contact: 'Deepika K (+91 98765 43219)', created_at: new Date().toISOString() }
+        { id: 'W001', name: 'Demo Helmet #1', helmet_id: 'DEMO-H001', zone: 'Zone A - Shaft 3', phone: '+91 98765 43210', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W002', name: 'Demo Helmet #2', helmet_id: 'DEMO-H002', zone: 'Zone B - Drift 1', phone: '+91 98765 43212', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W003', name: 'Demo Helmet #3', helmet_id: 'DEMO-H003', zone: 'Zone C - Extraction Face', phone: '+91 98765 43214', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W004', name: 'Demo Helmet #4', helmet_id: 'DEMO-H004', zone: 'Zone B - Conveyor 2', phone: '+91 98765 43216', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W006', name: 'Physical Smart Helmet (Live)', helmet_id: 'H-ESP32-LIVE', zone: 'Live Physical Device (HW-072)', phone: '+91 99999 88888', emergency_contact: 'Safety Control Room (+91 112)', created_at: new Date().toISOString() }
       ];
 
       for (const w of seedWorkers) {
         await this.run(
-          `INSERT INTO workers (id, name, helmet_id, zone, phone, emergency_contact, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO workers (id, name, helmet_id, zone, phone, emergency_contact, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [w.id, w.name, w.helmet_id, w.zone, w.phone, w.emergency_contact, w.created_at]
         );
       }
+    }
+
+    // Seed initial historical readings if table is empty
+    const readingCount = await this.get('SELECT count(*) as count FROM readings');
+    if (readingCount.count === 0) {
+      const workers = await this.getWorkers();
+      const now = Date.now();
+      const initialReadings = [];
+
+      for (const w of workers) {
+        // Base vibration configuration per zone
+        let baseVib = 1;
+        if (w.zone.includes('Extraction')) baseVib = 8;
+        else if (w.zone.includes('Conveyor')) baseVib = 4;
+        else if (w.zone.includes('Drift')) baseVib = 3;
+        else if (w.zone.includes('Shaft')) baseVib = 2;
+        else baseVib = 0;
+
+        for (let i = 30; i >= 0; i--) {
+          const ts = new Date(now - i * 15000).toISOString();
+          let events = Math.max(0, baseVib + Math.round(Math.random() * 4 - 2));
+          if (w.id === 'W003' && i >= 5 && i <= 8) events += 6; // moderate/high vibration wave
+
+          let lvl = 'NORMAL';
+          let st = 'SAFE';
+          if (events >= 21) { lvl = 'CRITICAL'; st = 'CRITICAL'; }
+          else if (events >= 11) { lvl = 'HIGH'; st = 'WARNING'; }
+          else if (events >= 6) { lvl = 'MODERATE'; st = 'MONITOR'; }
+          else if (events >= 3) { lvl = 'LOW'; st = 'NORMAL'; }
+
+          const readingObj = {
+            worker_id: w.id,
+            helmet_id: w.helmet_id,
+            zone_id: w.zone,
+            timestamp: ts,
+            ts,
+            temperature: +(27.5 + Math.random() * 2).toFixed(1),
+            humidity: +(62 + Math.random() * 6).toFixed(1),
+            pressure: 1013.25,
+            mq2_mv: 1350 + Math.round(Math.random() * 150),
+            mq5_mv: 1250 + Math.round(Math.random() * 120),
+            mq2_raw: 1650,
+            mq5_raw: 1550,
+            heart_rate: 74 + Math.round(Math.random() * 8),
+            spo2: 98,
+            ldr_raw: 2100,
+            sos: false,
+            fall: false,
+            battery: 90,
+            communication: 'wifi',
+            gateway_id: 'direct',
+            rssi: -62,
+            snr: null,
+            vibration_detected: events > 0,
+            vibration_events: events,
+            vibration_level: lvl,
+            vibration_status: st
+          };
+
+          initialReadings.push(readingObj);
+
+          if (i === 0) {
+            await this.saveLatestReading(w.id, readingObj);
+          }
+        }
+      }
+
+      await this.saveReadingHistoryBatch(initialReadings);
+    }
+
+    const alertRow = await this.get('SELECT count(*) as count FROM alerts');
+    if (alertRow.count === 0) {
+      await this.seedCleanAlertSamples();
+    }
+  }
+
+  async seedCleanAlertSamples() {
+    const now = Date.now();
+    const cleanSamples = [
+      {
+        id: 'ALT-SAMPLE-GAS-01',
+        worker_id: 'W003',
+        ts: new Date(now - 45 * 60 * 1000).toISOString(),
+        type: 'GAS',
+        severity: 'WARNING',
+        message: 'Elevated Gas Level (2,048 mV) exceeds warning threshold (2,000 mV).',
+        value: 2048,
+        acknowledged: 1,
+        acknowledged_by: 'Safety Officer',
+        acknowledged_at: new Date(now - 44 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 20 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-GAS-02',
+        worker_id: 'W004',
+        ts: new Date(now - 14 * 60 * 1000).toISOString(),
+        type: 'GAS',
+        severity: 'CRITICAL',
+        message: 'CRITICAL Toxic/Combustible Gas Level (2,520 mV) exceeds critical limit (2,500 mV)!',
+        value: 2520,
+        acknowledged: 0,
+        acknowledged_by: null,
+        acknowledged_at: null,
+        resolved_at: null
+      },
+      {
+        id: 'ALT-SAMPLE-FALL-01',
+        worker_id: 'W002',
+        ts: new Date(now - 85 * 60 * 1000).toISOString(),
+        type: 'FALL',
+        severity: 'CRITICAL',
+        message: 'Man Down / Sudden Fall impact detected on Helmet for Worker W002!',
+        value: 1,
+        acknowledged: 1,
+        acknowledged_by: 'Medical Lead',
+        acknowledged_at: new Date(now - 83 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 55 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-HLTH-01',
+        worker_id: 'W001',
+        ts: new Date(now - 38 * 60 * 1000).toISOString(),
+        type: 'HEALTH',
+        severity: 'WARNING',
+        message: 'High ambient temperature (35.4°C) in current zone.',
+        value: 35.4,
+        acknowledged: 1,
+        acknowledged_by: 'Safety Officer',
+        acknowledged_at: new Date(now - 35 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 10 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-HLTH-02',
+        worker_id: 'W005',
+        ts: new Date(now - 12 * 60 * 1000).toISOString(),
+        type: 'HEALTH',
+        severity: 'CRITICAL',
+        message: 'Severe Tachycardia: Heart rate critically high (122 BPM)!',
+        value: 122,
+        acknowledged: 1,
+        acknowledged_by: 'Safety Officer',
+        acknowledged_at: new Date(now - 10 * 60 * 1000).toISOString(),
+        resolved_at: null
+      },
+      {
+        id: 'ALT-SAMPLE-TRND-01',
+        worker_id: 'W003',
+        ts: new Date(now - 22 * 60 * 1000).toISOString(),
+        type: 'TREND',
+        severity: 'WARNING',
+        message: 'PREDICTIVE TREND: Gas index rising rapidly (+138 mV/min). Estimated breach in ~6 minutes!',
+        value: 138,
+        acknowledged: 0,
+        acknowledged_by: null,
+        acknowledged_at: null,
+        resolved_at: null
+      },
+      {
+        id: 'ALT-SAMPLE-BATT-01',
+        worker_id: 'W001',
+        ts: new Date(now - 110 * 60 * 1000).toISOString(),
+        type: 'BATTERY',
+        severity: 'WARNING',
+        message: 'Helmet battery low (18%). Recharge required soon.',
+        value: 18,
+        acknowledged: 1,
+        acknowledged_by: 'Maintenance Desk',
+        acknowledged_at: new Date(now - 100 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 40 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-OFFL-01',
+        worker_id: 'W004',
+        ts: new Date(now - 70 * 60 * 1000).toISOString(),
+        type: 'OFFLINE',
+        severity: 'INFO',
+        message: 'Helmet communication timeout: Worker W004 telemetry inactive for >60s.',
+        value: 60,
+        acknowledged: 1,
+        acknowledged_by: 'Network Monitor',
+        acknowledged_at: new Date(now - 66 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 62 * 60 * 1000).toISOString()
+      }
+    ];
+
+    for (const a of cleanSamples) {
+      await this.run(
+        `INSERT OR REPLACE INTO alerts (id, worker_id, ts, type, severity, message, value, acknowledged, acknowledged_by, acknowledged_at, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.id, a.worker_id, a.ts, a.type, a.severity, a.message, a.value, a.acknowledged, a.acknowledged_by, a.acknowledged_at, a.resolved_at]
+      );
     }
   }
 
@@ -243,6 +477,8 @@ export class SQLiteAdapter {
   }
 
   // --- Latest Readings ---
+  // Returns ALL latest readings from workers_latest — including physical devices
+  // that may not have a matching row in the workers table yet.
   async getLatestReadings() {
     const rows = await this.all('SELECT data_json FROM workers_latest');
     return rows.map(r => JSON.parse(r.data_json));
@@ -274,6 +510,7 @@ export class SQLiteAdapter {
       reading.timestamp || new Date().toISOString(),
       reading.temperature ?? null,
       reading.humidity ?? null,
+      reading.pressure ?? null,
       reading.mq2_mv ?? null,
       reading.mq5_mv ?? null,
       reading.mq2_raw ?? null,
@@ -287,14 +524,20 @@ export class SQLiteAdapter {
       reading.communication ?? 'wifi',
       reading.gateway_id ?? 'direct',
       reading.rssi ?? null,
-      reading.snr ?? null
+      reading.snr ?? null,
+      reading.vibration_detected ? 1 : 0,
+      reading.vibration_events ?? 0,
+      reading.vibration_level || 'NORMAL',
+      reading.vibration_status || 'SAFE',
+      reading.zone_id || null
     ];
 
     const res = await this.run(`
       INSERT INTO readings (
-        worker_id, ts, temperature, humidity, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
-        heart_rate, spo2, ldr_raw, sos, fall, battery, communication, gateway_id, rssi, snr
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        worker_id, ts, temperature, humidity, pressure, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
+        heart_rate, spo2, ldr_raw, sos, fall, battery, communication, gateway_id, rssi, snr,
+        vibration_detected, vibration_events, vibration_level, vibration_status, zone_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, payload);
 
     return { id: res.lastID, ...reading };
@@ -306,14 +549,16 @@ export class SQLiteAdapter {
       for (const r of readings) {
         await this.run(`
           INSERT INTO readings (
-            worker_id, ts, temperature, humidity, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
-            heart_rate, spo2, ldr_raw, sos, fall, battery, communication, gateway_id, rssi, snr
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            worker_id, ts, temperature, humidity, pressure, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
+            heart_rate, spo2, ldr_raw, sos, fall, battery, communication, gateway_id, rssi, snr,
+            vibration_detected, vibration_events, vibration_level, vibration_status, zone_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           r.worker_id,
           r.timestamp || r.ts || new Date().toISOString(),
           r.temperature ?? null,
           r.humidity ?? null,
+          r.pressure ?? null,
           r.mq2_mv ?? null,
           r.mq5_mv ?? null,
           r.mq2_raw ?? null,
@@ -327,7 +572,12 @@ export class SQLiteAdapter {
           r.communication ?? 'wifi',
           r.gateway_id ?? 'direct',
           r.rssi ?? null,
-          r.snr ?? null
+          r.snr ?? null,
+          r.vibration_detected ? 1 : 0,
+          r.vibration_events ?? 0,
+          r.vibration_level || 'NORMAL',
+          r.vibration_status || 'SAFE',
+          r.zone_id || null
         ]);
       }
       await this.exec('COMMIT');
@@ -361,7 +611,8 @@ export class SQLiteAdapter {
     return rows.reverse().map(r => ({
       ...r,
       sos: Boolean(r.sos),
-      fall: Boolean(r.fall)
+      fall: Boolean(r.fall),
+      vibration_detected: Boolean(r.vibration_detected)
     }));
   }
 

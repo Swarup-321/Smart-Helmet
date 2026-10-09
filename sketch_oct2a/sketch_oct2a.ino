@@ -1,12 +1,12 @@
 /**
- * MineGuard ESP32 Smart Helmet Firmware v2.2
+ * MineGuard ESP32 Smart Helmet Firmware v3.0
  * --------------------------------------------------
  * Sensors supported:
  *   - DHT11     : Temperature & Humidity  (Pin 4)
  *   - MQ-2      : Combustible Gas          (Pin 34 ADC)
  *   - MQ-5      : LPG/Methane Gas          (Pin 35 ADC)
  *   - MAX30102  : Heart Rate & SpO2 (HW827)(I2C SDA=21, SCL=22)
- *   - BMP280    : Atmospheric Pressure     (I2C SDA=21, SCL=22)
+ *   - HW-072    : Vibration Sensor DO     (Pin 26 Digital)
  *   - LDR       : Ambient Light             (Pin 32 ADC)
  *   - SOS button: Emergency               (Pin 27, INPUT_PULLUP)
  *   - BUZZER    : Audio Alert              (Pin 25)
@@ -14,7 +14,6 @@
  * Required Arduino Libraries (install via Library Manager):
  *   - "DHT sensor library" by Adafruit
  *   - "Adafruit Unified Sensor" by Adafruit
- *   - "Adafruit BMP280 Library" by Adafruit
  *   - "SparkFun MAX3010x Pulse and Proximity Sensor Library" by SparkFun
  *   - "ArduinoJson" by Benoit Blanchon
  */
@@ -23,7 +22,6 @@
 #include <HTTPClient.h>
 #include <DHT.h>
 #include <ArduinoJson.h>
-#include <Adafruit_BMP280.h>     // BMP280 atmospheric pressure sensor
 #include "MAX30105.h"        // SparkFun MAX3010x (supports MAX30102 / HW827)
 #include "heartRate.h"       // SparkFun BPM algorithm
 #include "spo2_algorithm.h"  // SparkFun SpO2 algorithm
@@ -40,29 +38,36 @@ const char* WORKER_ID  = "W006";
 const char* HELMET_ID  = "H-ESP32-LIVE";
 
 // ==================== PIN DEFINITIONS =======================
-#define DHTPIN       4
-#define DHTTYPE      DHT11
-#define MQ2_PIN      34
-#define MQ5_PIN      35
-#define LDR_PIN      32
-#define SOS_PIN      27
-#define BUZZER_PIN   25
+#define DHTPIN        4
+#define DHTTYPE       DHT11
+#define MQ2_PIN       34
+#define MQ5_PIN       35
+#define LDR_PIN       32
+#define SOS_PIN       27
+#define BUZZER_PIN    25
+#define VIBRATION_PIN 26    // HW-072 Vibration Sensor Digital Output (DO)
 
-// ==================== TIMING ================================
-#define DHT_INTERVAL_MS     2500UL   // DHT11 MUST have >= 2s between reads
-#define POST_INTERVAL_MS   10000UL   // Normal telemetry: every 10 seconds
-#define BUFFER_LENGTH        100     // MAX30102 SpO2 algorithm buffer size
+// ==================== TIMING & THRESHOLDS ===================
+#define DHT_INTERVAL_MS        2500UL   // DHT11 minimum 2.5s between reads
+#define POST_INTERVAL_MS      10000UL   // Telemetry transmission window: 10s
+#define VIB_WINDOW_MS         10000UL   // Vibration analysis time window: 10s
+#define BUFFER_LENGTH           100     // MAX30102 SpO2 algorithm buffer size
+
+// Configurable Vibration Thresholds (Events per 10-second window)
+#define VIB_THRESH_LOW          3       // 3-5 events: LOW
+#define VIB_THRESH_MODERATE     6       // 6-10 events: MODERATE
+#define VIB_THRESH_HIGH        11       // 11-20 events: HIGH
+#define VIB_THRESH_CRITICAL    21       // >20 events: CRITICAL
 
 // ==================== GLOBALS ==============================
 DHT      dht(DHTPIN, DHTTYPE);
 MAX30105 particleSensor;
-Adafruit_BMP280 bmp;    // BMP280 pressure sensor (shared I2C bus)
 
-unsigned long lastPostMs    = 0;
-unsigned long lastDhtMs     = 0;
-bool          sosTriggered  = false;
-bool          max30102OK    = false;
-bool          bmp280OK      = false;
+unsigned long lastPostMs       = 0;
+unsigned long lastDhtMs        = 0;
+unsigned long lastVibWindowMs  = 0;
+bool          sosTriggered     = false;
+bool          max30102OK       = false;
 
 float cachedTemp = NAN;
 float cachedHum  = NAN;
@@ -74,37 +79,78 @@ int8_t   spo2Valid  =  0;
 int32_t  hrVal      = -1;
 int8_t   hrValid    =  0;
 
+// HW-072 Vibration Sensor Monitoring Variables
+volatile unsigned long isrVibrationCount = 0;
+volatile unsigned long lastIsrVibTime    = 0;
+unsigned long lastVibrationEventTime    = 0;
+bool          vibrationDetectedInstant  = false;
+int           currentWindowEvents       = 0;
+String        currentVibrationLevel     = "NORMAL";
+String        currentVibrationStatus    = "SAFE";
+
 struct SensorData {
-  float temp, hum;
-  int mq2_raw, mq2_mv;
-  int mq5_raw, mq5_mv;
-  int ldr_raw;
-  int heart_rate, spo2;
-  float pressure;          // hPa from BMP280
-  int battery, rssi;
-  bool sos, fall;
+  float  temp, hum;
+  int    mq2_raw, mq2_mv;
+  int    mq5_raw, mq5_mv;
+  int    ldr_raw;
+  int    heart_rate, spo2;
+  int    battery, rssi;
+  bool   sos, fall;
+  // HW-072 Vibration Data
+  bool   vibration_detected;
+  int    vibration_events;
+  String vibration_level;
+  String vibration_status;
 } sensor;
 
-// ==================== ISR ==================================
-void IRAM_ATTR onSosPress() { sosTriggered = true; }
+// ==================== ISRs =================================
+void IRAM_ATTR onSosPress() { 
+  sosTriggered = true; 
+}
+
+void IRAM_ATTR onVibrationInterrupt() {
+  unsigned long now = millis();
+  // 15ms software debounce to filter noisy switch contacts
+  if (now - lastIsrVibTime > 15) {
+    isrVibrationCount++;
+    lastIsrVibTime = now;
+  }
+}
+
+// ==================== FORWARD DECLARATIONS =================
+void readDHT();
+void updateMAX30102();
+void readFastSensors();
+void readVibrationSensor();
+void analyzeVibration();
+void checkBuzzer();
+void connectWiFi();
+String buildJson();
+void sendToServer(String payload);
 
 // ==================== SETUP ================================
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n[MineGuard] Booting v2.1...");
+  Serial.println("\n[MineGuard] Booting ESP32 Smart Helmet Firmware v3.0...");
 
+  // SOS & Buzzer
   pinMode(SOS_PIN, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
   digitalWrite(BUZZER_PIN, LOW);
   attachInterrupt(digitalPinToInterrupt(SOS_PIN), onSosPress, FALLING);
 
+  // HW-072 Vibration Sensor (DO -> GPIO 26)
+  pinMode(VIBRATION_PIN, INPUT_PULLDOWN);
+  attachInterrupt(digitalPinToInterrupt(VIBRATION_PIN), onVibrationInterrupt, RISING);
+  Serial.println("[HW-072] Vibration Sensor initialized on GPIO " + String(VIBRATION_PIN));
+
   // DHT11
   dht.begin();
   Serial.println("[DHT11] Initialized on Pin " + String(DHTPIN));
 
-  // MAX30102 / HW827
-  Serial.println("[MAX30102] Initializing...");
+  // MAX30102 / HW-827
+  Serial.println("[MAX30102] Initializing Heart Rate / SpO2 sensor...");
   if (particleSensor.begin(Wire, I2C_SPEED_FAST)) {
     particleSensor.setup(60, 4, 2, 100, 411, 4096);
     particleSensor.setPulseAmplitudeRed(0x0A);
@@ -126,55 +172,48 @@ void setup() {
     max30102OK = false;
   }
 
-  // BMP280 Atmospheric Pressure Sensor
-  Serial.println("[BMP280] Initializing atmospheric pressure sensor...");
-  if (bmp.begin(0x76) || bmp.begin(0x77)) {
-    bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,
-                   Adafruit_BMP280::SAMPLING_X2,
-                   Adafruit_BMP280::SAMPLING_X16,
-                   Adafruit_BMP280::FILTER_X16,
-                   Adafruit_BMP280::STANDBY_MS_500);
-    bmp280OK = true;
-    Serial.printf("[BMP280] Found! Pressure: %.1f hPa\n", bmp.readPressure() / 100.0F);
-  } else {
-    Serial.println("[BMP280] NOT FOUND. Wiring: SDA->GPIO21, SCL->GPIO22, VCC->3.3V");
-    Serial.println("[BMP280] Pressure will show as 0 (not connected).");
-    bmp280OK = false;
-  }
-
   // LDR
   Serial.println("[LDR] Enabled on Pin " + String(LDR_PIN));
 
   connectWiFi();
 
-  // Double-beep = ready
+  // Double-beep = system ready
   for (int i = 0; i < 2; i++) {
     digitalWrite(BUZZER_PIN, HIGH); delay(120);
     digitalWrite(BUZZER_PIN, LOW);  delay(100);
   }
-  Serial.println("[MineGuard] Ready. Streaming every 10s.\n");
+  Serial.println("[MineGuard] System ready. Telemetry streaming every 10s.\n");
 }
 
 // ==================== MAIN LOOP ============================
 void loop() {
   unsigned long now = millis();
 
-  // DHT11: read every 2.5s minimum
+  // 1. Read Vibration Sensor continuous state
+  readVibrationSensor();
+
+  // 2. Perform Time-Window Vibration Analysis
+  if (now - lastVibWindowMs >= VIB_WINDOW_MS) {
+    analyzeVibration();
+    lastVibWindowMs = now;
+  }
+
+  // 3. DHT11: read every 2.5s minimum
   if (now - lastDhtMs >= DHT_INTERVAL_MS) {
     readDHT();
     lastDhtMs = now;
   }
 
-  // MAX30102: sliding window update
+  // 4. MAX30102: sliding window update
   if (max30102OK) updateMAX30102();
 
-  // Fast sensors: MQ-2, MQ-5, LDR, SOS, battery, RSSI
+  // 5. Fast sensors: MQ-2, MQ-5, LDR, SOS, battery, RSSI
   readFastSensors();
 
-  // Local buzzer (works even without WiFi)
+  // 6. Local buzzer alert evaluation (works offline)
   checkBuzzer();
 
-  // HTTP POST on SOS or every 10s
+  // 7. HTTP POST on SOS or every 10s
   bool doPost = sensor.sos || sosTriggered || (now - lastPostMs >= POST_INTERVAL_MS);
   if (doPost) {
     if (sensor.sos || sosTriggered) {
@@ -188,7 +227,64 @@ void loop() {
     sensor.sos   = false;
   }
 
-  delay(50);
+  delay(30);
+}
+
+// ==================== HW-072 VIBRATION PROCESSING ==========
+
+/**
+ * readVibrationSensor()
+ * Checks current HW-072 pin state and updates instantaneous event flags.
+ */
+void readVibrationSensor() {
+  int pinState = digitalRead(VIBRATION_PIN);
+  if (pinState == HIGH) {
+    vibrationDetectedInstant = true;
+    lastVibrationEventTime = millis();
+  } else if (millis() - lastVibrationEventTime > 300) {
+    vibrationDetectedInstant = false;
+  }
+}
+
+/**
+ * analyzeVibration()
+ * Evaluates the event counts accumulated during the 10-second time window.
+ * Classifies vibration activity into NORMAL, LOW, MODERATE, HIGH, CRITICAL.
+ */
+void analyzeVibration() {
+  // Read and reset atomic count from ISR
+  noInterrupts();
+  currentWindowEvents = isrVibrationCount;
+  isrVibrationCount = 0;
+  interrupts();
+
+  // Classify vibration severity based on event density in the window
+  if (currentWindowEvents >= VIB_THRESH_CRITICAL) {
+    currentVibrationLevel  = "CRITICAL";
+    currentVibrationStatus = "CRITICAL";
+  } else if (currentWindowEvents >= VIB_THRESH_HIGH) {
+    currentVibrationLevel  = "HIGH";
+    currentVibrationStatus = "WARNING";
+  } else if (currentWindowEvents >= VIB_THRESH_MODERATE) {
+    currentVibrationLevel  = "MODERATE";
+    currentVibrationStatus = "MONITOR";
+  } else if (currentWindowEvents >= VIB_THRESH_LOW) {
+    currentVibrationLevel  = "LOW";
+    currentVibrationStatus = "NORMAL";
+  } else {
+    currentVibrationLevel  = "NORMAL";
+    currentVibrationStatus = "SAFE";
+  }
+
+  sensor.vibration_detected = (currentWindowEvents > 0) || vibrationDetectedInstant;
+  sensor.vibration_events   = currentWindowEvents;
+  sensor.vibration_level    = currentVibrationLevel;
+  sensor.vibration_status   = currentVibrationStatus;
+
+  Serial.printf("[HW-072] Window Events: %d | Level: %s | Status: %s\n",
+                currentWindowEvents,
+                currentVibrationLevel.c_str(),
+                currentVibrationStatus.c_str());
 }
 
 // ==================== WiFi =================================
@@ -202,9 +298,9 @@ void connectWiFi() {
   }
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n[WiFi] Connected! IP: " + WiFi.localIP().toString());
-    Serial.println("[WiFi] ** Make sure SERVER_URL uses this laptop IP **");
+    Serial.println("[WiFi] ** Make sure SERVER_URL uses your server's reachable IP **");
   } else {
-    Serial.println("\n[WiFi] TIMEOUT. Offline mode: buzzer alerts still active.");
+    Serial.println("\n[WiFi] TIMEOUT. Operating in offline failsafe mode.");
   }
 }
 
@@ -213,11 +309,7 @@ void readDHT() {
   float t = dht.readTemperature();
   float h = dht.readHumidity();
   if (isnan(t) || isnan(h)) {
-    Serial.println("[DHT11] Read FAILED (NaN). Possible causes:");
-    Serial.println("         1. Reads too fast - firmware now uses 2.5s interval");
-    Serial.println("         2. Missing 10K pull-up resistor on data pin");
-    Serial.println("         3. Faulty sensor or loose connection");
-    if (!isnan(cachedTemp)) { // Keep last valid reading
+    if (!isnan(cachedTemp)) {
       sensor.temp = cachedTemp;
       sensor.hum  = cachedHum;
     } else {
@@ -235,7 +327,6 @@ void readDHT() {
 
 // ==================== MAX30102 =============================
 void updateMAX30102() {
-  // Slide the window: drop first 25, collect 25 new samples
   for (byte i = 25; i < BUFFER_LENGTH; i++) {
     redBuf[i - 25] = redBuf[i];
     irBuf[i - 25]  = irBuf[i];
@@ -268,26 +359,27 @@ void readFastSensors() {
   sensor.ldr_raw = analogRead(LDR_PIN);
   sensor.sos     = (digitalRead(SOS_PIN) == LOW) || sosTriggered;
   sensor.fall    = false;
-  sensor.battery = 85; // TODO: Replace with real ADC battery voltage divider reading
+  sensor.battery = 88;
   sensor.rssi    = (WiFi.status() == WL_CONNECTED) ? WiFi.RSSI() : -99;
 
   if (!max30102OK) { sensor.heart_rate = -1; sensor.spo2 = -1; }
-
-  // BMP280 Atmospheric Pressure
-  if (bmp280OK) {
-    sensor.pressure = bmp.readPressure() / 100.0F; // Pa -> hPa
-    Serial.printf("[BMP280] Pressure: %.1f hPa\n", sensor.pressure);
-  } else {
-    sensor.pressure = 0.0f;
-  }
 }
 
-// ==================== BUZZER ==============================
+// ==================== BUZZER ALERT =========================
 void checkBuzzer() {
+  // Local alarm triggers on:
+  // 1. SOS Emergency button
+  // 2. Gas spike (>2500mV)
+  // 3. Hypoxia (<90% SpO2)
+  // 4. Critical / High Vibration Level (does NOT sound for small isolated vibrations)
+  bool isHighVibration = (currentVibrationLevel == "HIGH" || currentVibrationLevel == "CRITICAL");
+  
   bool buzz = sensor.sos || sosTriggered
            || sensor.mq2_mv >= 2500
            || sensor.mq5_mv >= 2500
-           || (sensor.spo2 > 0 && sensor.spo2 < 90);
+           || (sensor.spo2 > 0 && sensor.spo2 < 90)
+           || isHighVibration;
+
   digitalWrite(BUZZER_PIN, buzz ? HIGH : LOW);
 }
 
@@ -315,7 +407,12 @@ String buildJson() {
 
   if (sensor.heart_rate > 0) doc["heart_rate"] = sensor.heart_rate;
   if (sensor.spo2       > 0) doc["spo2"]       = sensor.spo2;
-  if (sensor.pressure   > 0) doc["pressure"]   = sensor.pressure;
+
+  // HW-072 Vibration Telemetry
+  doc["vibration_detected"] = sensor.vibration_detected;
+  doc["vibration_events"]   = sensor.vibration_events;
+  doc["vibration_level"]    = sensor.vibration_level;
+  doc["vibration_status"]   = sensor.vibration_status;
 
   String out;
   serializeJson(doc, out);
@@ -331,7 +428,7 @@ void sendToServer(String payload) {
     unsigned long t0 = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - t0 < 5000) delay(200);
     if (WiFi.status() != WL_CONNECTED) {
-      Serial.println("[HTTP] Still offline. Skipping POST (local alert active).");
+      Serial.println("[HTTP] Still offline. Skipping POST (local buzzer alert active).");
       return;
     }
   }
@@ -348,7 +445,6 @@ void sendToServer(String payload) {
     Serial.printf("[HTTP] Response: %d %s\n", code, code == 201 ? "(OK - data accepted)" : "");
   } else {
     Serial.printf("[HTTP] Failed: %s\n", http.errorToString(code).c_str());
-    Serial.println("[HTTP] Tip: Run `ipconfig` on laptop, update SERVER_URL with WiFi IP");
   }
   http.end();
 }

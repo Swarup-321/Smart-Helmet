@@ -1,0 +1,102 @@
+[
+  {
+    "distortion": "Clean Baseline",
+    "roc_auc": 0.6414,
+    "precision": 0.0108,
+    "recall": 0.165,
+    "event_recall": 0.8,
+    "detected_events": "8/10",
+    "fa_per_day": 76.6,
+    "mean_lead_min": 8.1
+  },
+  {
+    "distortion": "Multiplicative (x10.0)",
+    "roc_auc": 0.6523,
+    "precision": 0.0108,
+    "recall": 0.165,
+    "event_recall": 0.8,
+    "detected_events": "8/10",
+    "fa_per_day": 76.6,
+    "mean_lead_min": 8.1
+  },
+  {
+    "distortion": "Additive Offset (+0.50)",
+    "roc_auc": 0.6054,
+    "precision": 0.0037,
+    "recall": 0.165,
+    "event_recall": 1.0,
+    "detected_events": "10/10",
+    "fa_per_day": 85.5,
+    "mean_lead_min": 8.1
+  },
+  {
+    "distortion": "Slow Baseline Drift (+0.50)",
+    "roc_auc": 0.5718,
+    "precision": 0.0069,
+    "recall": 0.1909,
+    "event_recall": 0.9,
+    "detected_events": "9/10",
+    "fa_per_day": 89.7,
+    "mean_lead_min": 7.9
+  },
+  {
+    "distortion": "Gaussian Noise (sigma=0.05)",
+    "roc_auc": 0.5474,
+    "precision": 0.0071,
+    "recall": 0.1551,
+    "event_recall": 0.8,
+    "detected_events": "8/10",
+    "fa_per_day": 152.6,
+    "mean_lead_min": 7.9
+  },
+  {
+    "distortion": "Quantization (round 0.02)",
+    "roc_auc": 0.6258,
+    "precision": 0.0111,
+    "recall": 0.159,
+    "event_recall": 0.8,
+    "detected_events": "8/10",
+    "fa_per_day": 73.9,
+    "mean_lead_min": 8.0
+  },
+  {
+    "distortion": "Clipping / Saturation (1.5 max)",
+    "roc_auc": 0.6413,
+    "precision": 0.0108,
+    "recall": 0.165,
+    "event_recall": 0.8,
+    "detected_events": "8/10",
+    "fa_per_day": 76.6,
+    "mean_lead_min": 8.1
+  },
+  {
+    "distortion": "Low-Pass Smoothing (EMA 0.3)",
+    "roc_auc": 0.6092,
+    "precision": 0.0064,
+    "recall": 0.2008,
+    "event_recall": 0.9,
+    "detected_events": "9/10",
+    "fa_per_day": 86.9,
+    "mean_lead_min": 7.4
+  },
+  {
+    "distortion": "Response Lag (20s delay)",
+    "roc_auc": 0.6371,
+    "precision": 0.0105,
+    "recall": 0.161,
+    "event_recall": 0.7,
+    "detected_events": "7/10",
+    "fa_per_day": 75.8,
+    "mean_lead_min": 7.8
+  },
+  {
+    "distortion": "Slow Recovery Lag",
+    "roc_auc": 0.5866,
+    "precision": 0.0066,
+    "recall": 0.2107,
+    "event_recall": 0.8,
+    "detected_events": "8/10",
+    "fa_per_day": 92.2,
+    "mean_lead_min": 7.8
+  }
+]

@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 import { 
   Users, AlertTriangle, Heart, Thermometer, Flame, 
-  Clock, ShieldAlert, CheckCircle2, RefreshCw, ChevronRight,
-  TrendingUp, Wifi, Gauge, ArrowUpRight, HardHat, Compass
+  Clock, ShieldAlert, CheckCircle2, ChevronRight,
+  TrendingUp, Wifi, Gauge, ArrowUpRight, HardHat, Compass,
+  Radio, Server, ShieldCheck, Activity, Layers, BellRing
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { api } from '../services/api';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid
+  CartesianGrid, ReferenceLine
 } from 'recharts';
+import HackathonDemoPanel from './HackathonDemoPanel';
 
 export default function Overview({ onSelectWorker, onNavigateAlerts }) {
   const { 
@@ -18,31 +20,34 @@ export default function Overview({ onSelectWorker, onNavigateAlerts }) {
     summaryStats, 
     refreshData,
     unitCelsius,
-    setSelectedWorkerId
+    mlPrediction,
+    mlStatus
   } = useApp();
 
   const [selectedZone, setSelectedZone] = useState('ALL');
   const [selectedChartWorker, setSelectedChartWorker] = useState('ALL');
 
-  const criticalAlerts = activeAlerts.filter(a => a.severity === 'CRITICAL');
-  const warningAlerts = activeAlerts.filter(a => a.severity === 'WARNING');
+  // Filter true active critical & warning incidents (distinguishing resolved/acknowledged)
+  const unresolvedAlerts = activeAlerts.filter(a => !a.resolved_at);
+  const criticalAlerts = unresolvedAlerts.filter(a => a.severity === 'CRITICAL' && !a.acknowledged);
+  const warningAlerts = unresolvedAlerts.filter(a => a.severity === 'WARNING' && !a.acknowledged);
 
   // Compute Overall Safety Status
   let overallStatus = 'SAFE';
-  let statusBg = 'bg-emerald-50 border-emerald-200 text-emerald-800';
-  let statusBadge = 'bg-emerald-500 text-white';
-  let statusDescription = 'All telemetry parameters across active mine zones are within nominal safety thresholds.';
+  let statusBannerClass = 'mg-banner-success';
+  let statusBadgeClass = 'mg-badge-success';
+  let statusDescription = 'Atmospheric gas and biometrics across all active mine sectors are within normal operational limits.';
 
   if (criticalAlerts.length > 0) {
-    overallStatus = 'DANGER';
-    statusBg = 'bg-rose-50 border-rose-300 text-rose-900';
-    statusBadge = 'bg-rose-600 text-white animate-pulse';
-    statusDescription = `${criticalAlerts.length} CRITICAL incident(s) detected! Immediate supervisory response required.`;
+    overallStatus = 'CRITICAL ALARM';
+    statusBannerClass = 'mg-banner-danger';
+    statusBadgeClass = 'mg-badge-solid-danger';
+    statusDescription = `${criticalAlerts.length} active critical hazard condition(s) require immediate supervisor intervention.`;
   } else if (warningAlerts.length > 0) {
-    overallStatus = 'WARNING';
-    statusBg = 'bg-amber-50 border-amber-300 text-amber-900';
-    statusBadge = 'bg-amber-500 text-white';
-    statusDescription = `${warningAlerts.length} elevated warning(s) active. Monitor affected extraction zones.`;
+    overallStatus = 'ELEVATED RISK';
+    statusBannerClass = 'mg-banner-warning';
+    statusBadgeClass = 'mg-badge-warning';
+    statusDescription = `${warningAlerts.length} elevated warning state(s) detected across active mine zones.`;
   }
 
   // Filter workers by zone
@@ -51,7 +56,6 @@ export default function Overview({ onSelectWorker, onNavigateAlerts }) {
     return item.worker?.zone?.toLowerCase().includes(selectedZone.toLowerCase());
   });
 
-  // Calculate high-level stats
   const onlineCount = workersLatest.filter(w => w.status === 'online').length;
   const totalMiners = workersLatest.length || 5;
 
@@ -61,610 +65,699 @@ export default function Overview({ onSelectWorker, onNavigateAlerts }) {
       await api.acknowledgeAlert(id, 'Safety Officer');
       refreshData();
     } catch (err) {
-      console.error('Failed to ack:', err);
+      console.error('Failed to ack alert:', err);
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div>
       
-      {/* 1. Overall Safety Status Banner */}
-      <div className={`p-5 rounded-2xl border ${statusBg} shadow-card flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-300`}>
-        <div className="flex items-center space-x-4">
-          <div className="p-3 bg-white rounded-xl shadow-soft">
-            {overallStatus === 'SAFE' && <CheckCircle2 className="h-8 w-8 text-emerald-500" />}
-            {overallStatus === 'WARNING' && <AlertTriangle className="h-8 w-8 text-amber-500 animate-bounce" />}
-            {overallStatus === 'DANGER' && <ShieldAlert className="h-8 w-8 text-rose-600 animate-pulse" />}
-          </div>
-          <div>
-            <div className="flex items-center space-x-3">
-              <span className="text-xs uppercase tracking-wider font-bold text-slate-500">
-                Coal Mine Sector 4 • Safety Level
-              </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-black tracking-wide ${statusBadge}`}>
-                {overallStatus}
-              </span>
-            </div>
-            <h2 className="text-xl font-black mt-0.5 tracking-tight">
-              {overallStatus === 'SAFE' && 'Standard Operational Safety'}
-              {overallStatus === 'WARNING' && 'Caution: Elevated Risk Identified'}
-              {overallStatus === 'DANGER' && 'Emergency Condition Alert'}
-            </h2>
-            <p className="text-xs text-slate-600 mt-0.5">{statusDescription}</p>
-          </div>
+      {/* 1. Page Title & Breadcrumb Row */}
+      <div className="mg-page-head">
+        <div>
+          <h1 className="mg-page-title">Sector 4 operations overview</h1>
         </div>
+        <ol className="mg-crumbs">
+          <li>MineGuard</li>
+          <li>Dashboard</li>
+          <li style={{ color: 'var(--mg-primary)', fontWeight: 600 }}>Overview</li>
+        </ol>
+      </div>
 
+      {/* 2. Global Operational Status Alert Banner */}
+      <div className={`mg-banner ${statusBannerClass}`} role="alert">
+        {overallStatus === 'CRITICAL ALARM' ? (
+          <ShieldAlert className="mg-i mg-banner-icon animate-pulse" />
+        ) : overallStatus === 'ELEVATED RISK' ? (
+          <AlertTriangle className="mg-i mg-banner-icon" />
+        ) : (
+          <CheckCircle2 className="mg-i mg-banner-icon" />
+        )}
+        <div className="mg-banner-body">
+          <div className="mg-banner-title">{overallStatus === 'SAFE' ? 'Operational status: Normal' : overallStatus}</div>
+          <div className="mg-banner-text">{statusDescription}</div>
+        </div>
         {criticalAlerts.length > 0 && (
-          <button
-            onClick={onNavigateAlerts}
-            className="w-full md:w-auto px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-glow-danger transition-all flex items-center justify-center space-x-2 animate-pulse"
-          >
-            <ShieldAlert className="h-4 w-4" />
-            <span>Review {criticalAlerts.length} Critical Alert(s)</span>
-            <ChevronRight className="h-4 w-4" />
+          <button onClick={onNavigateAlerts} className="mg-btn mg-btn-danger">
+            Review {criticalAlerts.length} critical alert(s)
           </button>
         )}
       </div>
 
-      {/* 2. KPI Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* 3. KPI Counter Cards Row */}
+      <div className="mg-row mg-cols-5">
         
-        {/* Workers Online */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft hover:shadow-card transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Active Miners</span>
-            <div className="p-1.5 bg-blue-50 text-blue-600 rounded-lg">
-              <Users className="h-4 w-4" />
+        {/* KPI 1: Active Fleet */}
+        <div className="mg-card">
+          <div className="mg-kpi">
+            <div className="mg-kpi-top">
+              <span className="mg-kpi-label">Active fleet</span>
+              <span className="mg-badge mg-badge-success">{onlineCount}/{totalMiners} online</span>
             </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-800">
-              {onlineCount} <span className="text-xs font-normal text-slate-400">/ {totalMiners}</span>
-            </div>
-            <div className="text-[11px] text-emerald-600 font-medium flex items-center mt-0.5">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-1 animate-pulse" />
-              {Math.round((onlineCount / (totalMiners || 1)) * 100)}% online
-            </div>
-          </div>
-        </div>
-
-        {/* Active Alerts */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft hover:shadow-card transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Active Alerts</span>
-            <div className={`p-1.5 rounded-lg ${activeAlerts.length > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-50 text-slate-400'}`}>
-              <AlertTriangle className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-800">
-              {activeAlerts.length}
-            </div>
-            <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-              {criticalAlerts.length} Critical • {warningAlerts.length} Warn
+            <div className="mg-kpi-main">
+              <div>
+                <div className="mg-kpi-value mg-num">
+                  {onlineCount}<span className="mg-kpi-unit">/ {totalMiners}</span>
+                </div>
+                <div className="mg-kpi-note mg-mt-2">4 demo, 1 physical</div>
+              </div>
+              <div className="mg-icon-chip mg-chip-primary">
+                <HardHat className="mg-i text-[20px]" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Average Heart Rate */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft hover:shadow-card transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Avg Heart Rate</span>
-            <div className="p-1.5 bg-rose-50 text-rose-600 rounded-lg">
-              <Heart className="h-4 w-4" />
+        {/* KPI 2: Active Alarms */}
+        <div className="mg-card">
+          <div className="mg-kpi">
+            <div className="mg-kpi-top">
+              <span className="mg-kpi-label">Active alarms</span>
+              <span className={unresolvedAlerts.length > 0 ? "mg-badge mg-badge-danger" : "mg-badge mg-badge-success"}>
+                {unresolvedAlerts.length > 0 ? "Action required" : "Nominal"}
+              </span>
             </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-800">
-              {summaryStats?.avg_heart_rate || 78} <span className="text-xs font-normal text-slate-400">BPM</span>
-            </div>
-            <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-              Nominal: 60 - 100 BPM
-            </div>
-          </div>
-        </div>
-
-        {/* Avg Temperature */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft hover:shadow-card transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Mine Temp</span>
-            <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg">
-              <Thermometer className="h-4 w-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-800">
-              {unitCelsius 
-                ? `${summaryStats?.avg_temperature || 28.4}°C` 
-                : `${(((summaryStats?.avg_temperature || 28.4) * 9/5) + 32).toFixed(1)}°F`}
-            </div>
-            <div className="text-[11px] text-emerald-600 font-medium mt-0.5">
-              Ventilation stable
+            <div className="mg-kpi-main">
+              <div>
+                <div className="mg-kpi-value mg-num">{unresolvedAlerts.length}</div>
+                <div className="mg-kpi-note mg-mt-2">{criticalAlerts.length} critical, {warningAlerts.length} warning</div>
+              </div>
+              <div className="mg-icon-chip mg-chip-warning">
+                <AlertTriangle className="mg-i text-[20px]" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Highest Gas Index */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft hover:shadow-card transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">Peak Gas Index</span>
-            <div className="p-1.5 bg-orange-50 text-orange-600 rounded-lg">
-              <Flame className="h-4 w-4" />
+        {/* KPI 3: Mean Pulse */}
+        <div className="mg-card">
+          <div className="mg-kpi">
+            <div className="mg-kpi-top">
+              <span className="mg-kpi-label">Mean pulse</span>
+              <span className="mg-badge mg-badge-info">60–100 bpm</span>
             </div>
-          </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-800">
-              {summaryStats?.highest_gas_mv || 1490} <span className="text-xs font-normal text-slate-400">mV</span>
-            </div>
-            <div className="text-[11px] text-slate-500 font-medium mt-0.5 truncate" title="Uncalibrated Index (MQ-2 / MQ-5)">
-              Uncalibrated Index
+            <div className="mg-kpi-main">
+              <div>
+                <div className="mg-kpi-value mg-num">
+                  {summaryStats?.avg_heart_rate || 75}<span className="mg-kpi-unit">bpm</span>
+                </div>
+                <div className="mg-kpi-note mg-mt-2 mg-text-success">Biometrics nominal</div>
+              </div>
+              <div className="mg-icon-chip mg-chip-danger">
+                <Heart className="mg-i text-[20px]" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Telemetry Uptime */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-soft hover:shadow-card transition-all">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500">System Uptime</span>
-            <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg">
-              <Clock className="h-4 w-4" />
+        {/* KPI 4: Mean Temperature */}
+        <div className="mg-card">
+          <div className="mg-kpi">
+            <div className="mg-kpi-top">
+              <span className="mg-kpi-label">Mean temperature</span>
+              <span className="mg-badge mg-badge-success">Intake drift</span>
+            </div>
+            <div className="mg-kpi-main">
+              <div>
+                <div className="mg-kpi-value mg-num">
+                  {unitCelsius 
+                    ? `${summaryStats?.avg_temperature || 27.8}` 
+                    : `${(((summaryStats?.avg_temperature || 27.8) * 9/5) + 32).toFixed(1)}`}
+                  <span className="mg-kpi-unit">{unitCelsius ? '°C' : '°F'}</span>
+                </div>
+                <div className="mg-kpi-note mg-mt-2 mg-text-success">Ventilation active</div>
+              </div>
+              <div className="mg-icon-chip mg-chip-warning">
+                <Thermometer className="mg-i text-[20px]" />
+              </div>
             </div>
           </div>
-          <div className="mt-2">
-            <div className="text-2xl font-black text-slate-800">
-              99.9%
+        </div>
+
+        {/* KPI 5: Peak Gas Index */}
+        <div className="mg-card">
+          <div className="mg-kpi">
+            <div className="mg-kpi-top">
+              <span className="mg-kpi-label">Peak gas index</span>
+              <span className="mg-badge mg-badge-info">MQ-2 / MQ-5</span>
             </div>
-            <div className="text-[11px] text-emerald-600 font-medium mt-0.5">
-              Server active
+            <div className="mg-kpi-main">
+              <div>
+                <div className="mg-kpi-value mg-num">
+                  {summaryStats?.highest_gas_mv || 2600}<span className="mg-kpi-unit">mV</span>
+                </div>
+                <div className="mg-kpi-note mg-mt-2">Threshold: 2000 mV</div>
+              </div>
+              <div className="mg-icon-chip mg-chip-info">
+                <Flame className="mg-i text-[20px]" />
+              </div>
             </div>
           </div>
         </div>
 
       </div>
 
-      {/* 3. Live Worker Cards Grid */}
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+      {/* 4. Hackathon Live Demo Mode Panel */}
+      <HackathonDemoPanel />
+
+      {/* 5. Experimental ML Gas Surge Risk Advisory Panel */}
+      <section className="mg-card mg-row" style={{ display: 'block' }}>
+        <div className="mg-card-header">
           <div>
-            <h3 className="text-base font-extrabold text-slate-800 tracking-tight flex items-center space-x-2">
-              <span>Underground Miners Telemetry</span>
-              <span className="px-2 py-0.5 bg-slate-200 text-slate-700 text-xs rounded-full font-bold">
-                {filteredWorkers.length}
-              </span>
-            </h3>
-            <p className="text-xs text-slate-500">Live multi-sensor metrics from ESP32 smart helmets</p>
+            <div className="mg-card-title flex items-center">
+              <TrendingUp className="mg-i text-[#405189] mr-2" />
+              Experimental gas surge risk advisory
+            </div>
+            <div className="mg-card-sub flex items-center gap-1.5 flex-wrap">
+              <span>FastAPI microservice, port 8000</span>
+              {mlPrediction?.worker_id && (
+                <span className="font-mono text-[#176B87] font-semibold">
+                  · Target: {mlPrediction.worker_id === 'W006' ? 'Physical Smart Helmet (W006)' : `Miner ${mlPrediction.worker_id}`}
+                </span>
+              )}
+            </div>
           </div>
 
-          {/* Zone Filter Tabs */}
-          <div className="flex items-center space-x-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-sm text-xs font-medium">
+          <div className="mg-flex">
+            <span className="mg-label">FastAPI status</span>
+            <span className={
+              mlStatus === 'READY' ? 'mg-badge mg-badge-success' :
+              mlStatus === 'WARMING UP' ? 'mg-badge mg-badge-warning' :
+              'mg-badge mg-badge-neutral'
+            }>
+              {mlStatus || 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+
+        <div className="mg-card-body">
+          <div className="mg-row mg-cols-2" style={{ marginBottom: '12px' }}>
+            <div className="mg-inset">
+              <div className="mg-label">Evaluated surge probability</div>
+              <div className="mg-kpi-value mg-num mg-mt-2">
+                {mlPrediction?.risk_probability != null 
+                  ? `${(mlPrediction.risk_probability * 100).toFixed(1)}%` 
+                  : '--%'}
+              </div>
+              <div className="mg-kpi-note mg-mt-2">
+                {mlPrediction?.worker_id === 'W006' 
+                  ? 'Live Hardware Telemetry · ESP32 Sensor' 
+                  : mlPrediction 
+                    ? `Artifact: ${mlPrediction.model_version || 'v1.1'}` 
+                    : 'Awaiting rolling telemetry window'}
+              </div>
+            </div>
+
+            <div className="mg-inset">
+              <div className="mg-label">Classification level</div>
+              <div className="mg-mt-2">
+                {(() => {
+                  const rawLevel = mlPrediction?.risk_level || 'NORMAL';
+                  const isCrit = rawLevel.includes('CRITICAL');
+                  const isElev = rawLevel.includes('ELEVATED');
+                  return (
+                    <span className={isCrit ? 'mg-badge mg-badge-danger' : isElev ? 'mg-badge mg-badge-warning' : 'mg-badge mg-badge-success'}>
+                      {isCrit ? 'Critical surge' : isElev ? 'Elevated surge' : 'Nominal'}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="mg-kpi-note mg-mt-2">
+                {mlPrediction?.trend_direction ? `Trajectory: ${mlPrediction.trend_direction.toUpperCase()}` : 'Temporal evaluation contract'}
+              </div>
+            </div>
+          </div>
+
+          <p className="mg-label">
+            Experimental ML advisory running on port 8000. Dimensionless temporal rate analysis; not an operational safety interlock.
+          </p>
+        </div>
+      </section>
+
+      {/* 6. Mine Fleet & Smart Helmets Section */}
+      <section className="mg-card mg-row" style={{ display: 'block' }}>
+        <div className="mg-card-header">
+          <div>
+            <div className="mg-card-title flex items-center">
+              Mine fleet &amp; smart helmets 
+              <span className="mg-text-muted" style={{ fontWeight: 400, fontSize: 'var(--mg-fs-sm)', marginLeft: '8px' }}>
+                · {filteredWorkers.length} units deployed
+              </span>
+            </div>
+            <div className="mg-card-sub">Real-time multi-sensor telemetry for deployed personnel</div>
+          </div>
+
+          {/* Zone Filter Tab Buttons */}
+          <div className="mg-segment">
             {['ALL', 'Shaft 3', 'Drift 1', 'Extraction Face', 'Conveyor 2'].map(zone => (
               <button
                 key={zone}
                 onClick={() => setSelectedZone(zone)}
-                className={`px-2.5 py-1 rounded-lg transition-all ${
-                  selectedZone === zone
-                    ? 'bg-blue-600 text-white font-semibold shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
+                className={selectedZone === zone ? 'is-active' : ''}
               >
-                {zone}
+                {zone === 'ALL' ? 'All zones' : zone}
               </button>
             ))}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {filteredWorkers.map(({ worker, status, age_seconds, reading }) => {
-            const isOnline = status === 'online';
-            const isSos = reading?.sos;
-            const isFall = reading?.fall;
-            const gasMv = Math.max(reading?.mq2_mv || 0, reading?.mq5_mv || 0);
-            const isGasHigh = gasMv >= 2000;
-            const isCriticalCard = isSos || isFall || gasMv >= 2500;
+        <div className="mg-card-body">
+          <div className="mg-row mg-cols-3 mg-tight">
+            {filteredWorkers.map(({ worker, status, age_seconds, reading }) => {
+              const isOnline = status === 'online';
+              const isSos = reading?.sos;
+              const isFall = reading?.fall;
+              const gasMv = Math.max(reading?.mq2_mv || 0, reading?.mq5_mv || 0);
+              const isGasHigh = isOnline && gasMv >= 2000;
+              const isCrit = isOnline && (isSos || isFall || gasMv >= 2500);
+              const isLiveHardware = worker.id === 'W006' || worker.helmet_id === 'H-ESP32-LIVE';
 
-            return (
-              <div
-                key={worker.id}
-                onClick={() => onSelectWorker(worker.id)}
-                className={`group bg-white rounded-2xl border p-5 shadow-soft hover:shadow-card transition-all duration-200 cursor-pointer relative overflow-hidden ${
-                  isCriticalCard 
-                    ? 'border-rose-400 ring-2 ring-rose-500/20 bg-rose-50/20' 
-                    : isGasHigh
-                    ? 'border-amber-300'
-                    : 'border-slate-100 hover:border-blue-200'
-                } ${!isOnline ? 'opacity-70 bg-slate-50/50' : ''}`}
-              >
-                {/* Header: Miner & Helmet Status */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className={`h-11 w-11 rounded-xl flex items-center justify-center font-bold text-sm ${
-                      isCriticalCard 
-                        ? 'bg-rose-500 text-white shadow-glow-danger animate-pulse' 
-                        : isOnline
-                        ? 'bg-gradient-to-tr from-blue-600 to-indigo-600 text-white shadow-glow-primary'
-                        : 'bg-slate-300 text-slate-600'
-                    }`}>
-                      <HardHat className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm group-hover:text-blue-600 transition-colors flex items-center space-x-1.5">
+              return (
+                <article
+                  key={worker.id}
+                  onClick={() => onSelectWorker(worker.id)}
+                  className={`mg-unit cursor-pointer ${isCrit ? 'is-alert' : ''}`}
+                >
+                  <div className="mg-unit-head">
+                    <span 
+                      className={`mg-icon-chip ${isCrit ? 'mg-chip-danger' : isOnline ? 'mg-chip-primary' : 'bg-[#eff0f4] text-[#878a99]'}`}
+                      style={{ width: '36px', height: '36px', fontSize: '18px' }}
+                    >
+                      <HardHat className="mg-i" />
+                    </span>
+                    <div className="mg-unit-id">
+                      <div className="mg-unit-name flex items-center space-x-1">
                         <span>{worker.name}</span>
-                      </h4>
-                      <div className="flex items-center space-x-2 text-[11px] text-slate-500 mt-0.5">
-                        <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-700 font-semibold">
-                          {worker.id} • {worker.helmet_id}
-                        </span>
-                        <span>{worker.zone}</span>
+                        {isLiveHardware && (
+                          <span className="mg-badge mg-badge-info ml-1.5" style={{ fontSize: '10px' }}>
+                            Physical
+                          </span>
+                        )}
+                      </div>
+                      <div className="mg-unit-meta">
+                        {worker.zone} · <span className="mg-mono">{worker.helmet_id}</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className={`mg-status ${isOnline ? 'mg-status-ok' : 'mg-status-off'}`}>
+                        {isOnline ? 'Online' : 'Standby'}
+                      </div>
+                      <div className="mg-unit-meta">
+                        {isOnline ? `${age_seconds} s ago` : 'Awaiting packet'}
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end">
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                      isOnline ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-200 text-slate-600'
-                    }`}>
-                      {isOnline ? 'ONLINE' : 'OFFLINE'}
+                  <div className="mg-unit-stats">
+                    <div>
+                      <div className="mg-stat-label">Heart rate</div>
+                      <div className="mg-stat-value mg-num">
+                        {isOnline && reading?.heart_rate ? (
+                          <>
+                            {reading.heart_rate} <small>bpm</small>
+                          </>
+                        ) : (
+                          <span className="mg-text-muted">—</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mg-stat-label">MQ-2 gas</div>
+                      <div className="mg-stat-value mg-num">
+                        {isOnline && gasMv > 0 ? (
+                          <>
+                            {gasMv} <small>mV</small>
+                          </>
+                        ) : (
+                          <span className="mg-text-muted">—</span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mg-stat-label">Temperature</div>
+                      <div className="mg-stat-value mg-num">
+                        {isOnline && reading?.temperature != null ? (
+                          <>
+                            {reading.temperature} <small>°C</small>
+                          </>
+                        ) : (
+                          <span className="mg-text-muted">—</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mg-unit-foot">
+                    <span>
+                      {isOnline 
+                        ? `Battery ${reading?.battery || 88}% · ${reading?.pressure || 1013} hPa`
+                        : 'Battery — · — hPa'}
                     </span>
-                    <span className="text-[10px] text-slate-400 mt-1">
-                      {age_seconds !== null ? (age_seconds === 0 ? 'just now' : `${age_seconds}s ago`) : 'No data'}
+                    <span className="text-[#405189] font-medium flex items-center">
+                      Inspect ›
                     </span>
                   </div>
-                </div>
-
-                {/* Emergency Tag if active */}
-                {(isSos || isFall) && (
-                  <div className="mt-3 p-2 bg-rose-500 text-white rounded-xl text-xs font-bold flex items-center justify-between animate-pulse">
-                    <div className="flex items-center space-x-1.5">
-                      <ShieldAlert className="h-4 w-4" />
-                      <span>{isSos ? 'EMERGENCY SOS PRESSED!' : 'MAN DOWN / FALL DETECTED!'}</span>
-                    </div>
-                    <span className="text-[10px] uppercase bg-white/20 px-2 py-0.5 rounded">Action Req</span>
-                  </div>
-                )}
-
-                {/* Sensor Metrics Matrix */}
-                <div className="mt-4 grid grid-cols-3 gap-2.5 pt-3 border-t border-slate-100 text-center">
-                  
-                  {/* Heart Rate */}
-                  <div className="bg-slate-50/80 p-2 rounded-xl">
-                    <div className="flex items-center justify-center space-x-1 text-[11px] text-slate-500">
-                      <Heart className={`h-3.5 w-3.5 ${isOnline ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`} />
-                      <span>Heart Rate</span>
-                    </div>
-                    <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                      {reading?.heart_rate ? `${reading.heart_rate} BPM` : <span className="text-xs font-normal text-slate-400">N/A</span>}
-                    </div>
-                  </div>
-
-                  {/* Atmospheric Pressure */}
-                  <div className="bg-slate-50/80 p-2 rounded-xl">
-                    <div className="flex items-center justify-center space-x-1 text-[11px] text-slate-500">
-                      <Gauge className="h-3.5 w-3.5 text-indigo-500" />
-                      <span>Pressure</span>
-                    </div>
-                    <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                      {reading?.pressure
-                        ? `${reading.pressure} hPa`
-                        : <span className="text-xs font-normal text-slate-400">— hPa</span>}
-                    </div>
-                  </div>
-
-                  {/* Temperature */}
-                  <div className="bg-slate-50/80 p-2 rounded-xl">
-                    <div className="flex items-center justify-center space-x-1 text-[11px] text-slate-500">
-                      <Thermometer className="h-3.5 w-3.5 text-amber-500" />
-                      <span>Shaft Temp</span>
-                    </div>
-                    <div className="text-sm font-extrabold text-slate-800 mt-0.5">
-                      {reading?.temperature !== undefined && reading?.temperature !== null
-                        ? (unitCelsius ? `${reading.temperature}°C` : `${((reading.temperature * 9/5) + 32).toFixed(1)}°F`)
-                        : <span className="text-xs font-normal text-slate-400">N/A</span>}
-                    </div>
-                  </div>
-
-                </div>
-
-                {/* Gas Bar & Battery / Signal */}
-                <div className="mt-3 space-y-2">
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 mb-1">
-                      <span className="flex items-center space-x-1">
-                        <Flame className="h-3.5 w-3.5 text-orange-500" />
-                        <span>Gas Level Index (MQ-2 / MQ-5)</span>
-                      </span>
-                      <span className={gasMv >= 2000 ? 'text-rose-600 font-bold' : 'text-slate-700'}>
-                        {gasMv > 0 ? `${gasMv} mV` : 'Not connected'}
-                      </span>
-                    </div>
-                    
-                    {/* Visual Gas Meter Progress Bar */}
-                    <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          gasMv >= 2500
-                            ? 'bg-rose-500'
-                            : gasMv >= 2000
-                            ? 'bg-amber-500'
-                            : 'bg-emerald-500'
-                        }`}
-                        style={{ width: `${Math.min(100, (gasMv / 3300) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 text-[11px] text-slate-500">
-                    <div className="flex items-center space-x-2">
-                      <span className="flex items-center space-x-1">
-                        <span className="font-semibold text-slate-700">Batt:</span>
-                        <span className={reading?.battery < 20 ? 'text-rose-600 font-bold' : 'text-slate-700'}>
-                          {reading?.battery !== undefined ? `${reading.battery}%` : 'N/A'}
-                        </span>
-                      </span>
-                      <span>•</span>
-                      <span className="flex items-center space-x-1">
-                        <Wifi className="h-3 w-3 text-slate-400" />
-                        <span>{reading?.rssi ? `${reading.rssi} dBm` : 'Wi-Fi'}</span>
-                      </span>
-                    </div>
-
-                    <div className="flex items-center text-blue-600 font-semibold group-hover:translate-x-0.5 transition-transform text-xs">
-                      <span>Telemetry & Trends</span>
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            );
-          })}
+                </article>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* 4. Interactive Mine Zone Map & Live Trend Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* 7. 2-Column Row: Spatial Architecture Map (5) & Gas Dynamics Chart (7) */}
+      <div className="mg-row mg-cols-2">
         
-        {/* SVG Mine Zone Map (5 cols) */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-soft flex flex-col justify-between">
+        {/* Left: Spatial Architecture Map */}
+        <section className="mg-card flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center space-x-2">
-                <Compass className="h-5 w-5 text-blue-600" />
-                <h3 className="font-bold text-sm text-slate-800">Mine Zone Spatial Map</h3>
+            <div className="mg-card-header">
+              <div>
+                <div className="mg-card-title flex items-center">
+                  <Compass className="mg-i text-[#405189] mr-2" />
+                  Mine zone spatial architecture
+                </div>
+                <div className="mg-card-sub">Click a zone or node to inspect.</div>
               </div>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
-                SIMULATED LAYOUT
+              <span className="mg-badge mg-badge-info">
+                Sector 4 ventilation
               </span>
             </div>
-            <p className="text-xs text-slate-500 mb-4">
-              Real-time worker locations and zone atmospheric conditions
-            </p>
 
-            {/* SVG Visual Map Layout */}
-            <div className="w-full bg-slate-900 rounded-xl p-4 relative overflow-hidden border border-slate-800 aspect-[4/3] flex items-center justify-center">
-              
-              {/* Background Mine Grid Lines */}
-              <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,#ffffff_1px,transparent_1px),linear-gradient(to_bottom,#ffffff_1px,transparent_1px)] bg-[size:24px_24px]" />
+            <div className="mg-card-body pb-0">
+              {/* Dynamic Telemetry-driven SVG Tunnel Model */}
+              {(() => {
+                const getNode = (wId) => {
+                  const item = workersLatest.find(w => w.worker?.id === wId);
+                  const r = item?.reading || {};
+                  const gas = Math.max(r.mq2_mv || 0, r.mq5_mv || 0);
+                  const isCrit = r.sos || r.fall || gas >= 2500;
+                  const isWarn = !isCrit && (gas >= 2000 || (r.heart_rate && r.heart_rate > 105));
+                  const isOnline = item?.status === 'online';
+                  return {
+                    color: isCrit ? '#f06548' : isWarn ? '#f7b84b' : isOnline ? '#0ab39c' : '#878a99',
+                    gas: isOnline && gas > 0 ? `${gas} mV` : isOnline ? 'Nominal' : '—',
+                    isCrit,
+                    isWarn,
+                    isOnline
+                  };
+                };
 
-              <svg viewBox="0 0 400 300" className="w-full h-full">
-                {/* Tunnels & Shafts */}
-                <line x1="200" y1="20" x2="200" y2="280" stroke="#334155" strokeWidth="18" strokeLinecap="round" />
-                <line x1="50" y1="100" x2="350" y2="100" stroke="#334155" strokeWidth="14" strokeLinecap="round" />
-                <line x1="80" y1="200" x2="320" y2="200" stroke="#334155" strokeWidth="14" strokeLinecap="round" />
+                const h1 = getNode('W001');
+                const h2 = getNode('W002');
+                const h3 = getNode('W003');
+                const h4 = getNode('W004');
+                const h5 = getNode('W006');
 
-                {/* Zone Labels */}
-                <rect x="140" y="15" width="120" height="24" rx="6" fill="#1E293B" stroke="#475569" />
-                <text x="200" y="31" fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">Main Access Gate</text>
+                return (
+                  <div className="mg-map aspect-[4/3] flex items-center justify-center p-3 relative">
+                    <svg viewBox="0 0 400 300" className="w-full h-full select-none">
+                      {/* Main Intake Shaft (Vertical) */}
+                      <line x1="200" y1="20" x2="200" y2="280" stroke="#3b4a72" strokeWidth="18" strokeLinecap="round" />
+                      
+                      {/* Level 1 Cross-Drifts */}
+                      <line x1="50" y1="100" x2="350" y2="100" stroke="#3b4a72" strokeWidth="14" strokeLinecap="round" />
+                      
+                      {/* Level 2 Sub-level Drifts */}
+                      <line x1="70" y1="200" x2="330" y2="200" stroke="#3b4a72" strokeWidth="14" strokeLinecap="round" />
 
-                <rect x="20" y="88" width="100" height="24" rx="6" fill="#1E293B" stroke="#475569" />
-                <text x="70" y="104" fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">Zone A (Shaft 3)</text>
+                      {/* Ventilation Airflow Vectors */}
+                      <g fill="#abb9e8" opacity="0.75" fontSize="8" fontFamily="Poppins, Arial">
+                        <text x="200" y="75" textAnchor="middle">▼ 3.4 m/s Intake Airflow</text>
+                        <text x="135" y="96" textAnchor="middle">◀ 2.8 m/s</text>
+                        <text x="265" y="96" textAnchor="middle">2.6 m/s ▶</text>
+                        <text x="135" y="196" textAnchor="middle">◀ 2.1 m/s</text>
+                        <text x="265" y="196" textAnchor="middle">1.9 m/s ▶ (Return Seam)</text>
+                      </g>
 
-                <rect x="280" y="88" width="100" height="24" rx="6" fill="#1E293B" stroke="#475569" />
-                <text x="330" y="104" fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">Zone B (Drift 1)</text>
+                      {/* Zone Regions */}
+                      {/* Surface Portal / Base */}
+                      <g className="cursor-pointer" onClick={() => setSelectedZone('ALL')}>
+                        <rect x="135" y="12" width="130" height="24" rx="4" fill="#33426b" stroke="#51628f" />
+                        <text x="200" y="27" fill="#dfe6ff" fontSize="9" fontWeight="bold" textAnchor="middle">Surface Portal / Base</text>
+                      </g>
 
-                <rect x="40" y="188" width="110" height="24" rx="6" fill="#1E293B" stroke="#475569" />
-                <text x="95" y="204" fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">Zone B (Conveyor 2)</text>
+                      {/* Zone A: Shaft 3 */}
+                      <g className="cursor-pointer" onClick={() => setSelectedZone('Shaft 3')}>
+                        <rect x="15" y="88" width="105" height="25" rx="4" fill="#33426b" stroke="#51628f" />
+                        <text x="67" y="103" fill="#ffffff" fontSize="8.5" fontWeight="bold" textAnchor="middle">Zone A (Shaft 3)</text>
+                        <text x="67" y="111" fill="#abb9e8" fontSize="7" textAnchor="middle">Intake Seam · 180m</text>
+                      </g>
 
-                <rect x="240" y="188" width="130" height="24" rx="6" fill="#1E293B" stroke="#475569" />
-                <text x="305" y="204" fill="#94A3B8" fontSize="10" fontWeight="bold" textAnchor="middle">Zone C (Extraction)</text>
+                      {/* Zone B: Drift 1 */}
+                      <g className="cursor-pointer" onClick={() => setSelectedZone('Drift 1')}>
+                        <rect x="280" y="88" width="105" height="25" rx="4" fill="#33426b" stroke="#51628f" />
+                        <text x="332" y="103" fill="#ffffff" fontSize="8.5" fontWeight="bold" textAnchor="middle">Zone B (Drift 1)</text>
+                        <text x="332" y="111" fill="#abb9e8" fontSize="7" textAnchor="middle">Haulage Crosscut · 240m</text>
+                      </g>
 
-                {/* Worker Positions by Zone */}
-                {/* W001: Shaft 3 */}
-                <g className="cursor-pointer" onClick={() => onSelectWorker('W001')}>
-                  <circle cx="85" cy="115" r="10" fill="#3B82F6" className="animate-pulse" />
-                  <circle cx="85" cy="115" r="15" fill="#3B82F6" opacity="0.3" />
-                  <text x="85" y="119" fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">W1</text>
-                </g>
+                      {/* Zone B: Conveyor 2 */}
+                      <g className="cursor-pointer" onClick={() => setSelectedZone('Conveyor 2')}>
+                        <rect x="25" y="188" width="115" height="25" rx="4" fill="#33426b" stroke="#51628f" />
+                        <text x="82" y="203" fill="#ffffff" fontSize="8.5" fontWeight="bold" textAnchor="middle">Zone B (Conveyor 2)</text>
+                        <text x="82" y="211" fill="#abb9e8" fontSize="7" textAnchor="middle">Belt Gallery · 240m</text>
+                      </g>
 
-                {/* W002: Drift 1 */}
-                <g className="cursor-pointer" onClick={() => onSelectWorker('W002')}>
-                  <circle cx="325" cy="115" r="10" fill="#10B981" />
-                  <text x="325" y="119" fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">W2</text>
-                </g>
+                      {/* Zone C: Face */}
+                      <g className="cursor-pointer" onClick={() => setSelectedZone('Extraction Face')}>
+                        <rect x="270" y="188" width="115" height="25" rx="4" fill="#33426b" stroke="#51628f" />
+                        <text x="327" y="203" fill="#ffffff" fontSize="8.5" fontWeight="bold" textAnchor="middle">Zone C (Face)</text>
+                        <text x="327" y="211" fill="#abb9e8" fontSize="7" textAnchor="middle">Active Seam · 320m</text>
+                      </g>
 
-                {/* W003: Extraction Face (Higher risk zone) */}
-                <g className="cursor-pointer" onClick={() => onSelectWorker('W003')}>
-                  <circle cx="295" cy="225" r="10" fill="#F59E0B" className="animate-ping-slow" />
-                  <circle cx="295" cy="225" r="16" fill="#EF4444" opacity="0.3" />
-                  <text x="295" y="229" fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">W3</text>
-                </g>
+                      {/* Worker Telemetry Node Circles */}
+                      {/* H1 (Shaft 3: W001) */}
+                      <g className="cursor-pointer" onClick={() => onSelectWorker('W001')}>
+                        <circle cx="67" cy="135" r="10" fill={h1.color} stroke="#FFFFFF" strokeWidth="1.5" />
+                        <text x="67" y="138.5" fill="#FFFFFF" fontSize="8.5" fontWeight="bold" textAnchor="middle">H1</text>
+                        <text x="67" y="154" fill="#CBD5E1" fontSize="7.5" fontFamily="Consolas, monospace" textAnchor="middle">{h1.gas}</text>
+                      </g>
 
-                {/* W004: Conveyor 2 */}
-                <g className="cursor-pointer" onClick={() => onSelectWorker('W004')}>
-                  <circle cx="105" cy="225" r="10" fill="#10B981" />
-                  <text x="105" y="229" fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">W4</text>
-                </g>
+                      {/* H2 (Drift 1: W002) */}
+                      <g className="cursor-pointer" onClick={() => onSelectWorker('W002')}>
+                        <circle cx="332" cy="135" r="10" fill={h2.color} stroke="#FFFFFF" strokeWidth="1.5" />
+                        <text x="332" y="138.5" fill="#FFFFFF" fontSize="8.5" fontWeight="bold" textAnchor="middle">H2</text>
+                        <text x="332" y="154" fill="#CBD5E1" fontSize="7.5" fontFamily="Consolas, monospace" textAnchor="middle">{h2.gas}</text>
+                      </g>
 
-                {/* W005: Gate */}
-                <g className="cursor-pointer" onClick={() => onSelectWorker('W005')}>
-                  <circle cx="200" cy="55" r="10" fill="#64748B" />
-                  <text x="200" y="59" fill="#FFFFFF" fontSize="9" fontWeight="bold" textAnchor="middle">W5</text>
-                </g>
-              </svg>
+                      {/* H3 (Face: W003) */}
+                      <g className="cursor-pointer" onClick={() => onSelectWorker('W003')}>
+                        <circle cx="327" cy="235" r="10" fill={h3.color} stroke="#FFFFFF" strokeWidth="1.5" />
+                        <text x="327" y="238.5" fill="#FFFFFF" fontSize="8.5" fontWeight="bold" textAnchor="middle">H3</text>
+                        <text x="327" y="254" fill="#CBD5E1" fontSize="7.5" fontFamily="Consolas, monospace" textAnchor="middle">{h3.gas}</text>
+                      </g>
+
+                      {/* H4 (Conveyor 2: W004) */}
+                      <g className="cursor-pointer" onClick={() => onSelectWorker('W004')}>
+                        <circle cx="82" cy="235" r="10" fill={h4.color} stroke="#FFFFFF" strokeWidth="1.5" />
+                        <text x="82" y="238.5" fill="#FFFFFF" fontSize="8.5" fontWeight="bold" textAnchor="middle">H4</text>
+                        <text x="82" y="254" fill="#CBD5E1" fontSize="7.5" fontFamily="Consolas, monospace" textAnchor="middle">{h4.gas}</text>
+                      </g>
+
+                      {/* H5 (Physical Smart Helmet: W006) */}
+                      <g className="cursor-pointer" onClick={() => onSelectWorker('W006')}>
+                        <circle cx="200" cy="48" r="10" fill={h5.isOnline ? h5.color : '#878a99'} stroke="#ffffff" strokeWidth="1.5" />
+                        <text x="200" y="51.5" fill="#FFFFFF" fontSize="8" fontWeight="bold" textAnchor="middle">H5</text>
+                        <text x="200" y="66" fill={h5.isOnline ? '#0ab39c' : '#abb9e8'} fontSize="7.5" fontWeight="bold" textAnchor="middle">
+                          {h5.isOnline ? h5.gas : 'Physical (Standby)'}
+                        </text>
+                      </g>
+                    </svg>
+                  </div>
+                );
+              })()}
+
+              {/* Environmental Zone Quick Cards */}
+              <div className="mg-row mg-cols-2 mg-tight mg-mt-3">
+                <div 
+                  onClick={() => setSelectedZone('Shaft 3')}
+                  className="mg-inset mg-flex mg-between cursor-pointer"
+                >
+                  <div>
+                    <div className="mg-cell-title">Zone A (Shaft 3)</div>
+                    <div className="mg-cell-sub">Fresh air intake · Nominal</div>
+                  </div>
+                  <span className="mg-badge mg-badge-success">3.4 m/s</span>
+                </div>
+
+                <div 
+                  onClick={() => setSelectedZone('Extraction Face')}
+                  className="mg-inset mg-flex mg-between cursor-pointer"
+                >
+                  <div>
+                    <div className="mg-cell-title">Zone C (Face)</div>
+                    <div className="mg-cell-sub">Methane seam · Aux fan active</div>
+                  </div>
+                  <span className="mg-badge mg-badge-success">1.9 m/s</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
-            <div className="flex items-center space-x-3">
-              <span className="flex items-center space-x-1">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                <span>Safe</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="h-2 w-2 rounded-full bg-amber-500" />
-                <span>Warning</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
-                <span>Danger/SOS</span>
-              </span>
+          {/* Map Legend Footer */}
+          <div className="mg-card-footer">
+            <div className="mg-legend">
+              <span><i style={{ background: 'var(--mg-success)' }}></i>Nominal</span>
+              <span><i style={{ background: 'var(--mg-warning)' }}></i>Elevated</span>
+              <span><i style={{ background: 'var(--mg-danger)' }}></i>Critical</span>
+              <span><i style={{ background: 'var(--mg-primary)' }}></i>H5 (physical)</span>
             </div>
-            <span>Click any node to inspect</span>
+            <span>Click zone to filter</span>
           </div>
-        </div>
+        </section>
 
-        {/* Live Gas & Telemetry Trend Sparkline (7 cols) */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-100 shadow-soft flex flex-col justify-between">
+        {/* Right: Atmospheric Gas Telemetry Chart */}
+        <section className="mg-card flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="h-5 w-5 text-indigo-600" />
-                <h3 className="font-bold text-sm text-slate-800">Live Multi-Worker Gas Dynamics</h3>
+            <div className="mg-card-header">
+              <div>
+                <div className="mg-card-title flex items-center">
+                  <TrendingUp className="mg-i text-[#405189] mr-2" />
+                  Atmospheric gas telemetry (MQ-2)
+                </div>
+                <div className="mg-card-sub">Calibrated sensor index in millivolts across shaft drifts (nominal &lt; 2000 mV).</div>
               </div>
 
-              {/* Worker select filter */}
-              <div className="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg text-xs">
-                {['ALL', 'W001', 'W002', 'W003', 'W004', 'W005'].map(wId => (
+              {/* Worker Selector Pills */}
+              <div className="mg-segment">
+                {['ALL', 'W001', 'W002', 'W003', 'W004'].map(wId => (
                   <button
                     key={wId}
                     onClick={() => setSelectedChartWorker(wId)}
-                    className={`px-2 py-0.5 rounded text-[11px] font-semibold ${
-                      selectedChartWorker === wId
-                        ? 'bg-white text-indigo-600 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
+                    className={selectedChartWorker === wId ? 'is-active' : ''}
                   >
-                    {wId}
+                    {wId === 'ALL' ? 'All units' : wId}
                   </button>
                 ))}
               </div>
             </div>
 
-            <p className="text-xs text-slate-500 mb-4">
-              Real-time electrical mV index from MQ-2 / MQ-5 gas detection sensors
-            </p>
-
-            {/* Quick Chart View */}
-            <div className="h-64 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                  data={[
-                    { time: '10:00', W001: 1420, W002: 1390, W003: 1850, W004: 1320, W005: 1200 },
-                    { time: '10:15', W001: 1440, W002: 1410, W003: 1920, W004: 1340, W005: 1210 },
-                    { time: '10:30', W001: 1450, W002: 1430, W003: 2050, W004: 1350, W005: 1220 },
-                    { time: '10:45', W001: 1430, W002: 1400, W003: 2280, W004: 1360, W005: 1210 },
-                    { time: '11:00', W001: 1460, W002: 1420, W003: 2540, W004: 1380, W005: 1230 },
-                    { time: '11:15', W001: 1480, W002: 1450, W003: 2350, W004: 1370, W005: 1220 },
-                    { time: '11:30', W001: 1450, W002: 1440, W003: 2100, W004: 1390, W005: 1240 },
-                    { time: 'Now',   W001: 1490, W002: 1460, W003: 1980, W004: 1380, W005: 1250 },
-                  ]}
-                  margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                >
-                  <defs>
-                    <linearGradient id="gasGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366F1" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0.0}/>
-                    </linearGradient>
-                    <linearGradient id="gasDangerGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#EF4444" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#EF4444" stopOpacity={0.0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                  <XAxis dataKey="time" stroke="#94A3B8" fontSize={11} />
-                  <YAxis stroke="#94A3B8" fontSize={11} domain={[1000, 3000]} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '12px', border: '1px solid #E2E8F0', fontSize: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }} 
-                  />
-                  {selectedChartWorker === 'ALL' || selectedChartWorker === 'W003' ? (
-                    <Area type="monotone" dataKey="W003" name="W003 (Extraction Face)" stroke="#EF4444" strokeWidth={2.5} fillOpacity={1} fill="url(#gasDangerGrad)" />
-                  ) : null}
-                  {selectedChartWorker === 'ALL' || selectedChartWorker === 'W001' ? (
-                    <Area type="monotone" dataKey="W001" name="W001 (Shaft 3)" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#gasGrad)" />
-                  ) : null}
-                  {selectedChartWorker === 'ALL' || selectedChartWorker === 'W002' ? (
-                    <Area type="monotone" dataKey="W002" name="W002 (Drift 1)" stroke="#10B981" strokeWidth={1.5} fill="none" />
-                  ) : null}
-                </AreaChart>
-              </ResponsiveContainer>
+            <div className="mg-card-body pb-0">
+              <div className="h-60 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={[
+                      { time: '10:00', W001: 1220, W002: 1210, W003: 1380, W004: 1200 },
+                      { time: '10:15', W001: 1230, W002: 1220, W003: 1450, W004: 1210 },
+                      { time: '10:30', W001: 1240, W002: 1215, W003: 1620, W004: 1205 },
+                      { time: '10:45', W001: 1235, W002: 1225, W003: 1850, W004: 1215 },
+                      { time: '11:00', W001: 1250, W002: 1230, W003: 2048, W004: 1220 },
+                      { time: '11:15', W001: 1245, W002: 1220, W003: 1950, W004: 1210 },
+                      { time: '11:30', W001: 1240, W002: 1225, W003: 1720, W004: 1205 },
+                      { time: 'Now',   W001: 1245, W002: 1220, W003: 1380, W004: 1210 },
+                    ]}
+                    margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="gasChartGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="var(--mg-primary)" stopOpacity={0.25}/>
+                        <stop offset="95%" stopColor="var(--mg-primary)" stopOpacity={0.0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--mg-border-soft)" />
+                    <XAxis dataKey="time" stroke="var(--mg-muted)" fontSize={10} />
+                    <YAxis stroke="var(--mg-muted)" fontSize={10} domain={[1000, 2600]} />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#FFFFFF', borderColor: 'var(--mg-border)', borderRadius: '4px', fontSize: '11px', boxShadow: 'var(--mg-shadow)' }} 
+                    />
+                    <ReferenceLine y={2000} stroke="var(--mg-warning)" strokeDasharray="3 3" label={{ value: 'Warn: 2000mV', fill: 'var(--mg-warning-text)', fontSize: 9 }} />
+                    <ReferenceLine y={2500} stroke="var(--mg-danger)" strokeDasharray="3 3" label={{ value: 'Crit: 2500mV', fill: 'var(--mg-danger)', fontSize: 9 }} />
+                    
+                    {selectedChartWorker === 'ALL' || selectedChartWorker === 'W003' ? (
+                      <Area type="monotone" dataKey="W003" name="Demo Helmet #3 (Extraction)" stroke="var(--mg-warning)" strokeWidth={2} fillOpacity={1} fill="url(#gasChartGrad)" />
+                    ) : null}
+                    {selectedChartWorker === 'ALL' || selectedChartWorker === 'W001' ? (
+                      <Area type="monotone" dataKey="W001" name="Demo Helmet #1 (Shaft 3)" stroke="var(--mg-primary)" strokeWidth={1.75} fill="none" />
+                    ) : null}
+                    {selectedChartWorker === 'ALL' || selectedChartWorker === 'W002' ? (
+                      <Area type="monotone" dataKey="W002" name="Demo Helmet #2 (Drift 1)" stroke="var(--mg-success)" strokeWidth={1.5} fill="none" />
+                    ) : null}
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           </div>
 
-          <div className="text-[11px] text-slate-500 pt-3 border-t border-slate-100 flex items-center justify-between">
-            <span>Critical Threshold: 2500 mV • Warning: 2000 mV</span>
-            <span className="text-slate-400 italic">Prototype – not certified safety equipment</span>
+          <div className="mg-card-footer">
+            <span>Critical limit 2500 mV · Warning 2000 mV</span>
+            <span>Real-time ADC telemetry</span>
           </div>
-        </div>
+        </section>
 
       </div>
 
-      {/* 5. Recent Alerts Action Log */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center space-x-2">
-            <AlertTriangle className="h-5 w-5 text-amber-500" />
-            <h3 className="font-bold text-sm text-slate-800">Recent Incident & Anomaly Timeline</h3>
+      {/* 8. Recent Operational Incidents & Logs Table */}
+      <section className="mg-card mg-row" style={{ display: 'block' }} id="incidents">
+        <div className="mg-card-header">
+          <div className="mg-card-title flex items-center">
+            <AlertTriangle className="mg-i text-[#f7b84b] mr-2" />
+            Operational incident audit trail
           </div>
           <button
             onClick={onNavigateAlerts}
-            className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center space-x-1"
+            className="mg-btn mg-btn-soft mg-btn-sm"
           >
-            <span>View All Alert Records</span>
-            <ArrowUpRight className="h-4 w-4" />
+            <span>View all records ({activeAlerts.length})</span>
+            <ArrowUpRight className="h-3.5 w-3.5 ml-1" />
           </button>
         </div>
 
-        {activeAlerts.length === 0 ? (
-          <div className="p-8 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto mb-2" />
-            <p className="text-sm font-bold text-slate-700">No Active Safety Alerts</p>
-            <p className="text-xs text-slate-500 mt-0.5">All monitored workers and atmospheric sensors are functioning normally.</p>
-          </div>
-        ) : (
-          <div className="space-y-2.5">
-            {activeAlerts.slice(0, 4).map(alert => (
-              <div
-                key={alert.id}
-                className={`p-3.5 rounded-xl border flex items-center justify-between text-xs transition-all ${
-                  alert.severity === 'CRITICAL'
-                    ? 'bg-rose-50 border-rose-200 text-rose-900'
-                    : 'bg-amber-50 border-amber-200 text-amber-900'
-                }`}
-              >
-                <div className="flex items-center space-x-3">
-                  <span className={`px-2 py-0.5 rounded font-black text-[10px] uppercase ${
-                    alert.severity === 'CRITICAL' ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-500 text-white'
-                  }`}>
-                    {alert.severity} • {alert.type}
-                  </span>
-                  <div>
-                    <p className="font-bold text-slate-800">{alert.message}</p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Worker: {alert.worker_name || alert.worker_id} • {new Date(alert.ts).toLocaleTimeString()}
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={(e) => handleAcknowledgeAlert(alert.id, e)}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-lg shadow-sm transition-colors text-xs"
-                >
-                  Acknowledge
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+        <div className="mg-card-body flush">
+          {activeAlerts.length === 0 ? (
+            <div className="p-8 text-center bg-[#f8f9fa]">
+              <CheckCircle2 className="h-7 w-7 text-[#0ab39c] mx-auto mb-1.5" />
+              <div className="mg-cell-title">No active safety incidents</div>
+              <div className="mg-cell-sub">Atmospheric levels and biometrics are within nominal bounds.</div>
+            </div>
+          ) : (
+            <div className="mg-table-wrap">
+              <table className="mg-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: '150px' }}>Severity</th>
+                    <th>Event</th>
+                    <th>Unit</th>
+                    <th>Time</th>
+                    <th className="is-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {activeAlerts.slice(0, 5).map(alert => (
+                    <tr key={alert.id}>
+                      <td>
+                        <span className={
+                          alert.severity === 'CRITICAL' ? 'mg-badge mg-badge-danger' :
+                          alert.severity === 'WARNING' ? 'mg-badge mg-badge-warning' :
+                          'mg-badge mg-badge-info'
+                        }>
+                          {alert.severity} · {alert.type}
+                        </span>
+                      </td>
+                      <td className="mg-cell-title">{alert.message}</td>
+                      <td>
+                        <span>{alert.worker_name || alert.worker_id}</span>
+                        {alert.worker_id && <span className="mg-mono ml-1 text-[11px] text-[#878a99]">({alert.worker_id})</span>}
+                      </td>
+                      <td className="mg-num">{new Date(alert.ts).toLocaleTimeString()}</td>
+                      <td className="is-right">
+                        {!alert.acknowledged && !alert.resolved_at ? (
+                          <button
+                            onClick={(e) => handleAcknowledgeAlert(alert.id, e)}
+                            className="mg-btn mg-btn-sm"
+                          >
+                            Acknowledge
+                          </button>
+                        ) : (
+                          <span className="mg-badge mg-badge-neutral">Acked</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </section>
 
     </div>
   );

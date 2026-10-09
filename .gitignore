@@ -8,3 +8,12 @@ data/*.db
 data/*.sqlite
 firebase-service-account*.json
 .DS_Store
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+screenshot*.png
+dashboard.html
+

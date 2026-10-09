@@ -60,6 +60,7 @@ export class SQLiteAdapter {
         if (err) return reject(err);
         try {
           await this.createTables();
+          await this.migrateSchema();
           await this.seedDefaults();
           resolve();
         } catch (setupErr) {
@@ -67,6 +68,18 @@ export class SQLiteAdapter {
         }
       });
     });
+  }
+
+  async migrateSchema() {
+    try {
+      const columns = await this.all(`PRAGMA table_info(readings)`);
+      const hasPressure = columns.some(c => c.name === 'pressure');
+      if (!hasPressure) {
+        await this.run(`ALTER TABLE readings ADD COLUMN pressure REAL`);
+      }
+    } catch (err) {
+      console.warn('SQLite migration warning (readings table):', err.message);
+    }
   }
 
   async createTables() {
@@ -95,6 +108,7 @@ export class SQLiteAdapter {
         ts TEXT NOT NULL,
         temperature REAL,
         humidity REAL,
+        pressure REAL,
         mq2_mv REAL,
         mq5_mv REAL,
         mq2_raw REAL,
@@ -182,19 +196,142 @@ export class SQLiteAdapter {
     const workerRow = await this.get('SELECT count(*) as count FROM workers');
     if (workerRow.count === 0) {
       const seedWorkers = [
-        { id: 'W001', name: 'Rajesh Kumar', helmet_id: 'H001', zone: 'Zone A - Shaft 3', phone: '+91 98765 43210', emergency_contact: 'Sunita Kumar (+91 98765 43211)', created_at: new Date().toISOString() },
-        { id: 'W002', name: 'Vikram Singh', helmet_id: 'H002', zone: 'Zone B - Drift 1', phone: '+91 98765 43212', emergency_contact: 'Anita Singh (+91 98765 43213)', created_at: new Date().toISOString() },
-        { id: 'W003', name: 'Amit Patel', helmet_id: 'H003', zone: 'Zone C - Extraction Face', phone: '+91 98765 43214', emergency_contact: 'Pooja Patel (+91 98765 43215)', created_at: new Date().toISOString() },
-        { id: 'W004', name: 'Suresh Raina', helmet_id: 'H004', zone: 'Zone B - Conveyor 2', phone: '+91 98765 43216', emergency_contact: 'Kavita Raina (+91 98765 43217)', created_at: new Date().toISOString() },
-        { id: 'W005', name: 'Dinesh Karthik', helmet_id: 'H005', zone: 'Main Access Gate', phone: '+91 98765 43218', emergency_contact: 'Deepika K (+91 98765 43219)', created_at: new Date().toISOString() }
+        { id: 'W001', name: 'Demo Helmet #1', helmet_id: 'DEMO-H001', zone: 'Zone A - Shaft 3', phone: '+91 98765 43210', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W002', name: 'Demo Helmet #2', helmet_id: 'DEMO-H002', zone: 'Zone B - Drift 1', phone: '+91 98765 43212', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W003', name: 'Demo Helmet #3', helmet_id: 'DEMO-H003', zone: 'Zone C - Extraction Face', phone: '+91 98765 43214', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W004', name: 'Demo Helmet #4', helmet_id: 'DEMO-H004', zone: 'Zone B - Conveyor 2', phone: '+91 98765 43216', emergency_contact: 'Sector 4 Dispatch (+91 112)', created_at: new Date().toISOString() },
+        { id: 'W006', name: 'Physical Smart Helmet (Live)', helmet_id: 'H-ESP32-LIVE', zone: 'Zone A - Shaft 3', phone: '+91 99999 88888', emergency_contact: 'Safety Control Room (+91 112)', created_at: new Date().toISOString() }
       ];
 
       for (const w of seedWorkers) {
         await this.run(
-          `INSERT INTO workers (id, name, helmet_id, zone, phone, emergency_contact, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT OR REPLACE INTO workers (id, name, helmet_id, zone, phone, emergency_contact, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [w.id, w.name, w.helmet_id, w.zone, w.phone, w.emergency_contact, w.created_at]
         );
       }
+    }
+
+    const alertRow = await this.get('SELECT count(*) as count FROM alerts');
+    if (alertRow.count === 0) {
+      await this.seedCleanAlertSamples();
+    }
+  }
+
+  async seedCleanAlertSamples() {
+    const now = Date.now();
+    const cleanSamples = [
+      {
+        id: 'ALT-SAMPLE-GAS-01',
+        worker_id: 'W003',
+        ts: new Date(now - 45 * 60 * 1000).toISOString(),
+        type: 'GAS',
+        severity: 'WARNING',
+        message: 'Elevated Gas Level (2,048 mV) exceeds warning threshold (2,000 mV).',
+        value: 2048,
+        acknowledged: 1,
+        acknowledged_by: 'Safety Officer',
+        acknowledged_at: new Date(now - 44 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 20 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-GAS-02',
+        worker_id: 'W004',
+        ts: new Date(now - 14 * 60 * 1000).toISOString(),
+        type: 'GAS',
+        severity: 'CRITICAL',
+        message: 'CRITICAL Toxic/Combustible Gas Level (2,520 mV) exceeds critical limit (2,500 mV)!',
+        value: 2520,
+        acknowledged: 0,
+        acknowledged_by: null,
+        acknowledged_at: null,
+        resolved_at: null
+      },
+      {
+        id: 'ALT-SAMPLE-FALL-01',
+        worker_id: 'W002',
+        ts: new Date(now - 85 * 60 * 1000).toISOString(),
+        type: 'FALL',
+        severity: 'CRITICAL',
+        message: 'Man Down / Sudden Fall impact detected on Helmet for Worker W002!',
+        value: 1,
+        acknowledged: 1,
+        acknowledged_by: 'Medical Lead',
+        acknowledged_at: new Date(now - 83 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 55 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-HLTH-01',
+        worker_id: 'W001',
+        ts: new Date(now - 38 * 60 * 1000).toISOString(),
+        type: 'HEALTH',
+        severity: 'WARNING',
+        message: 'High ambient temperature (35.4°C) in current zone.',
+        value: 35.4,
+        acknowledged: 1,
+        acknowledged_by: 'Safety Officer',
+        acknowledged_at: new Date(now - 35 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 10 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-HLTH-02',
+        worker_id: 'W005',
+        ts: new Date(now - 12 * 60 * 1000).toISOString(),
+        type: 'HEALTH',
+        severity: 'CRITICAL',
+        message: 'Severe Tachycardia: Heart rate critically high (122 BPM)!',
+        value: 122,
+        acknowledged: 1,
+        acknowledged_by: 'Safety Officer',
+        acknowledged_at: new Date(now - 10 * 60 * 1000).toISOString(),
+        resolved_at: null
+      },
+      {
+        id: 'ALT-SAMPLE-TRND-01',
+        worker_id: 'W003',
+        ts: new Date(now - 22 * 60 * 1000).toISOString(),
+        type: 'TREND',
+        severity: 'WARNING',
+        message: 'PREDICTIVE TREND: Gas index rising rapidly (+138 mV/min). Estimated breach in ~6 minutes!',
+        value: 138,
+        acknowledged: 0,
+        acknowledged_by: null,
+        acknowledged_at: null,
+        resolved_at: null
+      },
+      {
+        id: 'ALT-SAMPLE-BATT-01',
+        worker_id: 'W001',
+        ts: new Date(now - 110 * 60 * 1000).toISOString(),
+        type: 'BATTERY',
+        severity: 'WARNING',
+        message: 'Helmet battery low (18%). Recharge required soon.',
+        value: 18,
+        acknowledged: 1,
+        acknowledged_by: 'Maintenance Desk',
+        acknowledged_at: new Date(now - 100 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 40 * 60 * 1000).toISOString()
+      },
+      {
+        id: 'ALT-SAMPLE-OFFL-01',
+        worker_id: 'W004',
+        ts: new Date(now - 70 * 60 * 1000).toISOString(),
+        type: 'OFFLINE',
+        severity: 'INFO',
+        message: 'Helmet communication timeout: Worker W004 telemetry inactive for >60s.',
+        value: 60,
+        acknowledged: 1,
+        acknowledged_by: 'Network Monitor',
+        acknowledged_at: new Date(now - 66 * 60 * 1000).toISOString(),
+        resolved_at: new Date(now - 62 * 60 * 1000).toISOString()
+      }
+    ];
+
+    for (const a of cleanSamples) {
+      await this.run(
+        `INSERT OR REPLACE INTO alerts (id, worker_id, ts, type, severity, message, value, acknowledged, acknowledged_by, acknowledged_at, resolved_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [a.id, a.worker_id, a.ts, a.type, a.severity, a.message, a.value, a.acknowledged, a.acknowledged_by, a.acknowledged_at, a.resolved_at]
+      );
     }
   }
 
@@ -274,6 +411,7 @@ export class SQLiteAdapter {
       reading.timestamp || new Date().toISOString(),
       reading.temperature ?? null,
       reading.humidity ?? null,
+      reading.pressure ?? null,
       reading.mq2_mv ?? null,
       reading.mq5_mv ?? null,
       reading.mq2_raw ?? null,
@@ -292,9 +430,9 @@ export class SQLiteAdapter {
 
     const res = await this.run(`
       INSERT INTO readings (
-        worker_id, ts, temperature, humidity, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
+        worker_id, ts, temperature, humidity, pressure, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
         heart_rate, spo2, ldr_raw, sos, fall, battery, communication, gateway_id, rssi, snr
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, payload);
 
     return { id: res.lastID, ...reading };
@@ -306,14 +444,15 @@ export class SQLiteAdapter {
       for (const r of readings) {
         await this.run(`
           INSERT INTO readings (
-            worker_id, ts, temperature, humidity, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
+            worker_id, ts, temperature, humidity, pressure, mq2_mv, mq5_mv, mq2_raw, mq5_raw,
             heart_rate, spo2, ldr_raw, sos, fall, battery, communication, gateway_id, rssi, snr
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           r.worker_id,
           r.timestamp || r.ts || new Date().toISOString(),
           r.temperature ?? null,
           r.humidity ?? null,
+          r.pressure ?? null,
           r.mq2_mv ?? null,
           r.mq5_mv ?? null,
           r.mq2_raw ?? null,

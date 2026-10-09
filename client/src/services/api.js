@@ -186,7 +186,7 @@ class ApiService {
   }
 
   // Socket.IO init
-  initSocket(onReading, onAlert, onWorkerStatus) {
+  initSocket(onReading, onAlert, onWorkerStatus, onMlPrediction, onMlReadiness) {
     if (this.socket) {
       this.socket.disconnect();
     }
@@ -200,6 +200,8 @@ class ApiService {
     if (onReading) this.socket.on('reading', onReading);
     if (onAlert) this.socket.on('alert', onAlert);
     if (onWorkerStatus) this.socket.on('worker_status', onWorkerStatus);
+    if (onMlPrediction) this.socket.on('ml_gas_prediction', onMlPrediction);
+    if (onMlReadiness) this.socket.on('ml_gas_readiness', onMlReadiness);
 
     return this.socket;
   }

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from './context/AppContext';
-import Header from './components/Header';
+import Sidebar from './components/Sidebar';
+import TopBar from './components/TopBar';
 import Overview from './components/Overview';
 import WorkerDetail from './components/WorkerDetail';
 import AlertsView from './components/AlertsView';
@@ -10,77 +11,99 @@ import SettingsView from './components/SettingsView';
 import CommandPalette from './components/CommandPalette';
 import FullscreenSosOverlay from './components/FullscreenSosOverlay';
 import ToastContainer from './components/ToastContainer';
-import { HardHat, AlertCircle, RefreshCw } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState('overview'); // 'overview' | 'workers' | 'worker-detail' | 'alerts' | 'analytics' | 'settings'
   const [selectedWorkerId, setSelectedWorkerId] = useState('W001');
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
-  const { isServerWaking, refreshData } = useApp();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const { isServerWaking } = useApp();
 
   const handleSelectWorker = (id) => {
     setSelectedWorkerId(id);
     setCurrentTab('worker-detail');
   };
 
+  React.useEffect(() => {
+    if (isSidebarCollapsed) {
+      document.body.classList.add('mg-sidebar-collapsed');
+    } else {
+      document.body.classList.remove('mg-sidebar-collapsed');
+    }
+  }, [isSidebarCollapsed]);
+
   return (
-    <div className="min-h-screen bg-[#F5F7FB] flex flex-col selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-[#F3F3F9] text-[#495057] font-sans">
       
-      {/* Top Glass Header */}
-      <Header
+      {/* 1. Persistent Left Navigation Sidebar */}
+      <Sidebar
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
-        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        isCollapsed={isSidebarCollapsed}
+        setIsCollapsed={setIsSidebarCollapsed}
+        mobileOpen={isMobileMenuOpen}
+        setMobileOpen={setIsMobileMenuOpen}
       />
 
-      {/* Render Server Cold Start / Waking Banner if applicable */}
-      {isServerWaking && (
-        <div className="bg-amber-500 text-white px-4 py-2 text-center text-xs font-bold flex items-center justify-center space-x-2 animate-pulse">
-          <RefreshCw className="h-4 w-4 animate-spin" />
-          <span>Waking up cloud server container... Retrying live telemetry connection.</span>
+      {/* 2. Top Utility Bar */}
+      <TopBar
+        currentTab={currentTab}
+        onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        onToggleMobileMenu={() => {
+          if (window.innerWidth < 1024) {
+            setIsMobileMenuOpen(!isMobileMenuOpen);
+          } else {
+            setIsSidebarCollapsed(!isSidebarCollapsed);
+          }
+        }}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
+
+      {/* 3. Main Workspace Shell */}
+      <main className="mg-main">
+        {/* Server Cold-Start Banner (if applicable) */}
+        {isServerWaking && (
+          <div className="bg-[#FFBE0B] text-[#182B3A] px-4 py-2 text-center text-xs font-semibold flex items-center justify-center space-x-2 border-b border-[#E9EBEC]">
+            <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#182B3A]" />
+            <span>Telemetry Server Synchronizing... Reconnecting live WebSocket stream.</span>
+          </div>
+        )}
+
+        <div className="mg-content">
+          {currentTab === 'overview' && (
+            <Overview
+              onSelectWorker={handleSelectWorker}
+              onNavigateAlerts={() => setCurrentTab('alerts')}
+            />
+          )}
+
+          {currentTab === 'worker-detail' && (
+            <WorkerDetail
+              workerId={selectedWorkerId}
+              onBack={() => setCurrentTab('overview')}
+            />
+          )}
+
+          {currentTab === 'alerts' && <AlertsView />}
+
+          {currentTab === 'analytics' && <AnalyticsView />}
+
+          {currentTab === 'workers' && (
+            <WorkersDevicesView onSelectWorker={handleSelectWorker} />
+          )}
+
+          {currentTab === 'settings' && <SettingsView />}
         </div>
-      )}
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {currentTab === 'overview' && (
-          <Overview
-            onSelectWorker={handleSelectWorker}
-            onNavigateAlerts={() => setCurrentTab('alerts')}
-          />
-        )}
-
-        {currentTab === 'worker-detail' && (
-          <WorkerDetail
-            workerId={selectedWorkerId}
-            onBack={() => setCurrentTab('overview')}
-          />
-        )}
-
-        {currentTab === 'alerts' && <AlertsView />}
-
-        {currentTab === 'analytics' && <AnalyticsView />}
-
-        {currentTab === 'workers' && (
-          <WorkersDevicesView onSelectWorker={handleSelectWorker} />
-        )}
-
-        {currentTab === 'settings' && <SettingsView />}
+        {/* Template Design System Footer */}
+        <footer className="mg-footer">
+          <span>MineGuard · Sector 4</span>
+          <span>Simulated values are labelled; model output is shown separately</span>
+        </footer>
       </main>
-
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-200/80 bg-white/60 py-4 text-center text-[11px] text-slate-500">
-        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center space-x-2">
-            <span className="font-bold text-slate-700">MineGuard IoT Framework</span>
-            <span>•</span>
-            <span>Prototype safety system for deep coal mining telemetry</span>
-          </div>
-          <div className="text-slate-400">
-            ESP32 Wi-Fi &amp; LoRa SX1278 Gateway Ready
-          </div>
-        </div>
-      </footer>
 
       {/* Overlays & Dialogs */}
       <FullscreenSosOverlay />

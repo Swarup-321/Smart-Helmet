@@ -1,50 +1,63 @@
 import React, { useState } from 'react';
 import { 
-  BarChart2, Flame, TrendingUp, ShieldAlert, 
-  FileText, Download, Printer, Users, Thermometer, Compass, Calendar
+  BarChart2, Flame, Thermometer, Wind, 
+  TrendingUp, Activity, Filter, Calendar, Download, 
+  Printer, ArrowUpRight, ArrowDownRight, Clock, ShieldCheck, AlertTriangle
 } from 'lucide-react';
-import { useApp } from '../context/AppContext';
 import { 
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, 
-  Tooltip, ResponsiveContainer, BarChart, Bar, Cell 
+  Tooltip, ResponsiveContainer, ZAxis, ReferenceLine 
 } from 'recharts';
 
 export default function AnalyticsView() {
-  const { workersLatest, unitCelsius } = useApp();
   const [selectedShift, setSelectedShift] = useState('Morning (06:00 - 14:00)');
+  const [selectedGasType, setSelectedGasType] = useState('MQ-2');
 
-  // Scatter plot data: Temperature vs Gas correlation
-  const scatterData = [
-    { temp: 26.5, gas: 1250, worker: 'W005 (Gate)' },
-    { temp: 27.8, gas: 1390, worker: 'W004 (Conveyor 2)' },
-    { temp: 28.2, gas: 1450, worker: 'W001 (Shaft 3)' },
-    { temp: 29.5, gas: 1520, worker: 'W002 (Drift 1)' },
-    { temp: 31.0, gas: 2150, worker: 'W003 (Extraction Face)' },
-    { temp: 31.8, gas: 2380, worker: 'W003 (Peak)' },
-    { temp: 27.1, gas: 1300, worker: 'W001 (Baseline)' },
+  // Multi-Worker Gas Correlation Data (Temperature vs Gas Level)
+  const correlationData = [
+    { temp: 24.2, gas: 1180, hr: 68, worker: 'W001' },
+    { temp: 24.8, gas: 1220, hr: 72, worker: 'W001' },
+    { temp: 25.1, gas: 1260, hr: 74, worker: 'W002' },
+    { temp: 25.5, gas: 1310, hr: 76, worker: 'W002' },
+    { temp: 26.0, gas: 1390, hr: 80, worker: 'W003' },
+    { temp: 26.4, gas: 1450, hr: 82, worker: 'W004' },
+    { temp: 27.2, gas: 1680, hr: 88, worker: 'W003' },
+    { temp: 27.8, gas: 1820, hr: 92, worker: 'W003' },
+    { temp: 28.3, gas: 1980, hr: 96, worker: 'W003' },
+    { temp: 28.9, gas: 2150, hr: 104, worker: 'W003' }, // Elevated
+    { temp: 29.4, gas: 2340, hr: 110, worker: 'W003' }, // High
+    { temp: 25.8, gas: 1240, hr: 75, worker: 'W006' },
   ];
 
-  // Gas heatmap matrix (Hour of Day vs Day of Week simulated)
+  // 7-Day Atmospheric Heatmap Data (Days x 4-Hour Time Blocks)
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const hours = ['06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00'];
+  const timeBlocks = ['00-04h', '04-08h', '08-12h', '12-16h', '16-20h', '20-24h'];
+  
+  // Synthetic calibrated matrix values (mV)
+  const heatmapMatrix = [
+    [1180, 1200, 1450, 1620, 1380, 1220], // Mon
+    [1190, 1210, 1510, 1780, 1420, 1230], // Tue
+    [1220, 1240, 1680, 2150, 1640, 1280], // Wed (High surge)
+    [1210, 1230, 1540, 1890, 1490, 1250], // Thu
+    [1200, 1220, 1480, 1710, 1410, 1240], // Fri
+    [1160, 1180, 1320, 1450, 1310, 1190], // Sat (Reduced activity)
+    [1150, 1170, 1290, 1380, 1280, 1180], // Sun
+  ];
 
-  const getHeatmapColor = (dIdx, hIdx) => {
-    // Simulated elevated risk on Thu/Fri afternoons
-    if ((dIdx === 3 || dIdx === 4) && (hIdx >= 3 && hIdx <= 5)) {
-      return 'bg-rose-500 text-white';
-    } else if (hIdx >= 2 && hIdx <= 4) {
-      return 'bg-amber-400 text-slate-900';
-    }
-    return 'bg-emerald-100 text-emerald-900';
+  const getHeatmapColor = (val) => {
+    if (val >= 2000) return 'bg-[#F06548] text-white font-bold'; // Critical/High
+    if (val >= 1600) return 'bg-[#F7B84B] text-[#182B3A] font-semibold'; // Elevated
+    if (val >= 1400) return 'bg-[#E8F2F5] text-[#176B87]'; // Moderate
+    return 'bg-[#F3F6F8] text-[#878A99]'; // Nominal
   };
 
-  // Top Risk Leaderboard
+  // Top Risk Leaderboard using updated demo helmets
   const riskLeaderboard = [
-    { rank: 1, id: 'W003', name: 'Amit Patel', zone: 'Zone C - Extraction Face', avgGas: '2180 mV', incidents: 3, riskScore: 88 },
-    { rank: 2, id: 'W001', name: 'Rajesh Kumar', zone: 'Zone A - Shaft 3', avgGas: '1480 mV', incidents: 1, riskScore: 35 },
-    { rank: 3, id: 'W002', name: 'Vikram Singh', zone: 'Zone B - Drift 1', avgGas: '1440 mV', incidents: 1, riskScore: 30 },
-    { rank: 4, id: 'W004', name: 'Suresh Raina', zone: 'Zone B - Conveyor 2', avgGas: '1360 mV', incidents: 0, riskScore: 18 },
-    { rank: 5, id: 'W005', name: 'Dinesh Karthik', zone: 'Main Access Gate', avgGas: '1240 mV', incidents: 0, riskScore: 12 },
+    { rank: 1, id: 'W003', helmet: 'DEMO-H003', name: 'Demo Helmet #3', zone: 'Zone C - Extraction Face', avgGas: '2180 mV', incidents: 3, riskScore: 88, status: 'ELEVATED' },
+    { rank: 2, id: 'W001', helmet: 'DEMO-H001', name: 'Demo Helmet #1', zone: 'Zone A - Shaft 3', avgGas: '1480 mV', incidents: 1, riskScore: 35, status: 'NORMAL' },
+    { rank: 3, id: 'W002', helmet: 'DEMO-H002', name: 'Demo Helmet #2', zone: 'Zone B - Drift 1', avgGas: '1440 mV', incidents: 1, riskScore: 30, status: 'NORMAL' },
+    { rank: 4, id: 'W004', helmet: 'DEMO-H004', name: 'Demo Helmet #4', zone: 'Zone B - Conveyor 2', avgGas: '1360 mV', incidents: 0, riskScore: 18, status: 'NORMAL' },
+    { rank: 5, id: 'W006', helmet: 'H-ESP32-LIVE', name: 'Physical Smart Helmet', zone: 'Zone A - Main Drift', avgGas: '—', incidents: null, riskScore: null, status: 'STANDBY' },
   ];
 
   const handlePrint = () => {
@@ -52,24 +65,24 @@ export default function AnalyticsView() {
   };
 
   return (
-    <div className="space-y-6 print:space-y-4">
+    <div className="space-y-5 print:space-y-4">
       
-      {/* 1. Header & Shift Report Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 print:hidden">
-        <div>
-          <h2 className="text-xl font-black text-slate-800 tracking-tight flex items-center space-x-2">
-            <span>Environmental Trends & Shift Analytics</span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Deep-dive gas heatmaps, temperature correlations, and safety risk leaderboards
-          </p>
+      {/* 1. Velzon Breadcrumb Header Row */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-3 border-b border-[#E9EBEC] gap-3 print:hidden">
+        <div className="flex items-center gap-2">
+          <h4 className="text-sm sm:text-base font-bold text-[#495057] uppercase tracking-wide">
+            Environmental Trends &amp; Shift Analytics
+          </h4>
+          <span className="badge-soft-info">
+            SHIFT AUDIT
+          </span>
         </div>
 
         <div className="flex items-center space-x-2">
           <select
             value={selectedShift}
             onChange={(e) => setSelectedShift(e.target.value)}
-            className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-sm"
+            className="px-3 py-1.5 rounded border border-[#E9EBEC] bg-white text-xs font-semibold text-[#495057] focus:outline-none focus:border-[#176B87]"
           >
             <option>Morning (06:00 - 14:00)</option>
             <option>Afternoon (14:00 - 22:00)</option>
@@ -78,167 +91,219 @@ export default function AnalyticsView() {
 
           <button
             onClick={handlePrint}
-            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center space-x-1.5"
+            className="px-3.5 py-1.5 bg-[#176B87] hover:bg-[#12566D] text-white rounded text-xs font-semibold shadow-sm transition-all flex items-center space-x-1.5"
           >
-            <Printer className="h-4 w-4" />
-            <span>Print Shift Safety Report</span>
+            <Printer className="h-3.5 w-3.5" />
+            <span>Export Shift Report</span>
           </button>
         </div>
       </div>
 
       {/* Printable Shift Header */}
-      <div className="hidden print:block border-b pb-4 mb-4">
-        <h1 className="text-2xl font-black text-slate-900">MineGuard • Shift Safety Summary Audit</h1>
-        <p className="text-xs text-slate-500">Date: {new Date().toLocaleDateString()} • Shift: {selectedShift} • Sector: Coal Mine 4</p>
+      <div className="hidden print:block border-b border-[#E9EBEC] pb-4 mb-4">
+        <h1 className="text-xl font-bold text-[#212529]">MineGuard • Shift Safety Summary Audit</h1>
+        <p className="text-xs text-[#878A99] font-mono">Date: {new Date().toLocaleDateString()} • Shift: {selectedShift} • Sector: Underground Mine Sector 4</p>
       </div>
 
-      {/* 2. Heatmap & Correlation Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* 2. Heatmap & Correlation Grid (Velzon Cards) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
         
         {/* Gas Exposure Heatmap Matrix (7 cols) */}
-        <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-100 shadow-soft">
-          <div className="flex items-center justify-between mb-2">
+        <div className="lg:col-span-7 velzon-card">
+          <div className="velzon-card-header">
             <div className="flex items-center space-x-2">
-              <Flame className="h-5 w-5 text-orange-500" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                Atmospheric Gas Density Heatmap (Hour vs Day)
-              </h4>
+              <Flame className="h-4 w-4 text-[#176B87]" />
+              <h2 className="velzon-card-title">
+                Atmospheric gas density matrix (hour vs day)
+              </h2>
             </div>
-            <span className="text-[10px] text-slate-400 font-semibold">Weekly Aggregation</span>
+            <span className="text-[11px] text-[#878A99]">7-day window aggregate</span>
           </div>
-          <p className="text-xs text-slate-500 mb-4">
-            Identifies peak gas buildup periods to schedule ventilation fan cycles
-          </p>
 
-          {/* Matrix Grid */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-center text-xs">
-              <thead>
-                <tr>
-                  <th className="p-1.5 text-[10px] text-slate-400 font-bold"></th>
-                  {hours.map(h => (
-                    <th key={h} className="p-1.5 text-[10px] text-slate-500 font-semibold">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {days.map((d, dIdx) => (
-                  <tr key={d}>
-                    <td className="p-1.5 text-[10px] font-bold text-slate-600 text-left">{d}</td>
-                    {hours.map((h, hIdx) => (
-                      <td key={h} className="p-1">
-                        <div className={`h-7 rounded-lg flex items-center justify-center font-bold text-[10px] transition-transform hover:scale-105 ${getHeatmapColor(dIdx, hIdx)}`}>
-                          {getHeatmapColor(dIdx, hIdx).includes('rose') ? '2.4k' : getHeatmapColor(dIdx, hIdx).includes('amber') ? '1.8k' : '1.3k'}
-                        </div>
-                      </td>
+          <div className="velzon-card-body">
+            {/* Matrix Grid */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-center text-xs border-collapse">
+                <thead>
+                  <tr>
+                    <th className="p-2 text-left font-mono text-[10px] text-[#878A99] uppercase">Day</th>
+                    {timeBlocks.map(t => (
+                      <th key={t} className="p-2 font-mono text-[10px] text-[#878A99] uppercase">{t}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[#E9EBEC]">
+                  {days.map((day, dIdx) => (
+                    <tr key={day}>
+                      <td className="p-2 text-left font-bold text-[#495057] text-xs">{day}</td>
+                      {heatmapMatrix[dIdx].map((val, tIdx) => (
+                        <td key={tIdx} className="p-1">
+                          <div 
+                            className={`p-2 rounded text-[11px] font-mono transition-transform hover:scale-105 ${getHeatmapColor(val)}`}
+                            title={`${day} ${timeBlocks[tIdx]}: ${val} mV`}
+                          >
+                            {val}
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-          <div className="flex items-center justify-between text-[11px] text-slate-400 pt-3 mt-2 border-t border-slate-100">
-            <div className="flex items-center space-x-3">
-              <span className="flex items-center space-x-1">
-                <span className="h-2.5 w-2.5 rounded bg-emerald-100 border border-emerald-300" />
-                <span>&lt; 1500 mV (Low)</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="h-2.5 w-2.5 rounded bg-amber-400" />
-                <span>1500 - 2000 mV (Elevated)</span>
-              </span>
-              <span className="flex items-center space-x-1">
-                <span className="h-2.5 w-2.5 rounded bg-rose-500 text-white" />
-                <span>&gt; 2000 mV (Ventilation Req)</span>
-              </span>
+            {/* Heatmap Legend */}
+            <div className="mt-4 pt-3 border-t border-[#E9EBEC] flex items-center justify-between text-[11px] text-[#878A99]">
+              <div className="flex items-center space-x-3">
+                <span className="flex items-center space-x-1">
+                  <span className="w-3 h-3 rounded bg-[#F3F6F8] border border-[#E9EBEC]" />
+                  <span>&lt; 1400 mV (Nominal)</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-3 h-3 rounded bg-[#E8F2F5] border border-[#C5DFE7]" />
+                  <span>1400 - 1600 mV</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-3 h-3 rounded bg-[#F7B84B]" />
+                  <span>1600 - 2000 mV (Elevated)</span>
+                </span>
+                <span className="flex items-center space-x-1">
+                  <span className="w-3 h-3 rounded bg-[#F06548]" />
+                  <span>&gt; 2000 mV (Critical)</span>
+                </span>
+              </div>
+              <span className="font-mono text-[10px]">Sensor: MQ-2 mV</span>
             </div>
           </div>
         </div>
 
-        {/* Temperature vs Gas Index Correlation Scatter (5 cols) */}
-        <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-100 shadow-soft flex flex-col justify-between">
-          <div>
-            <div className="flex items-center space-x-2 mb-2">
-              <Thermometer className="h-5 w-5 text-amber-500" />
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                Temperature vs Gas Correlation
-              </h4>
+        {/* Scatter: Temperature vs Gas Concentration Correlation (5 cols) */}
+        <div className="lg:col-span-5 velzon-card">
+          <div className="velzon-card-header">
+            <div className="flex items-center space-x-2">
+              <Thermometer className="h-4 w-4 text-[#176B87]" />
+              <h2 className="velzon-card-title">
+                Thermal vs gas concentration correlation
+              </h2>
             </div>
-            <p className="text-xs text-slate-500 mb-3">
-              Scatter plot correlating thermal drift with combustible gas releases
-            </p>
+            <span className="badge-soft-info">r = +0.84</span>
+          </div>
 
-            <div className="h-56 w-full">
+          <div className="velzon-card-body">
+            <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <ScatterChart margin={{ top: 10, right: 10, bottom: 0, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                  <XAxis type="number" dataKey="temp" name="Temperature" unit="°C" domain={[24, 34]} stroke="#94A3B8" fontSize={11} />
-                  <YAxis type="number" dataKey="gas" name="Gas Level" unit=" mV" domain={[1000, 2600]} stroke="#94A3B8" fontSize={11} />
-                  <Tooltip cursor={{ strokeDasharray: '3 3' }} contentStyle={{ backgroundColor: '#FFFFFF', borderRadius: '12px', fontSize: '11px' }} />
-                  <Scatter name="Miners" data={scatterData} fill="#6366F1" />
+                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F3F6F9" />
+                  <XAxis 
+                    type="number" 
+                    dataKey="temp" 
+                    name="Temperature" 
+                    unit="°C" 
+                    domain={[23, 31]} 
+                    stroke="#878A99" 
+                    fontSize={10} 
+                    fontStyle="mono" 
+                  />
+                  <YAxis 
+                    type="number" 
+                    dataKey="gas" 
+                    name="Gas Level" 
+                    unit="mV" 
+                    domain={[1000, 2600]} 
+                    stroke="#878A99" 
+                    fontSize={10} 
+                    fontStyle="mono" 
+                  />
+                  <Tooltip 
+                    cursor={{ strokeDasharray: '3 3' }}
+                    contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E9EBEC', borderRadius: '6px', fontSize: '11px' }}
+                  />
+                  <ReferenceLine y={2000} stroke="#F7B84B" strokeDasharray="3 3" />
+                  <Scatter name="Miners Telemetry" data={correlationData} fill="#176B87" />
                 </ScatterChart>
               </ResponsiveContainer>
             </div>
-          </div>
 
-          <div className="text-[11px] text-slate-500 pt-2 border-t border-slate-100">
-            <span>Positive correlation r = +0.78 between depth temperature and gas pockets.</span>
+            <div className="mt-4 pt-3 border-t border-[#E9EBEC] flex items-center justify-between text-xs text-[#878A99]">
+              <span>Ventilation regression curve: <strong className="text-[#495057]">Positive Drift</strong></span>
+              <span className="font-mono text-[11px]">Points: 12 Samples</span>
+            </div>
           </div>
         </div>
 
       </div>
 
-      {/* 3. Top-Risk Worker Leaderboard & Shift Summary */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-soft space-y-4">
-        <div className="flex items-center justify-between">
+      {/* 3. Hazard Ranking & Shift Leaderboard Table (Velzon Table) */}
+      <div className="velzon-card overflow-hidden">
+        <div className="velzon-card-header">
           <div className="flex items-center space-x-2">
-            <ShieldAlert className="h-5 w-5 text-rose-500" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Shift Hazard Exposure Leaderboard
-            </h4>
+            <AlertTriangle className="h-4 w-4 text-[#F7B84B]" />
+            <h2 className="velzon-card-title">
+              Shift hazard exposure leaderboard
+            </h2>
           </div>
-          <span className="text-xs font-semibold text-slate-500">Based on cumulative sensor dwell time</span>
+          <span className="text-xs text-[#878A99]">Ranked by cumulative gas exposure risk score</span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-600">
-            <thead className="bg-slate-50 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
+          <table className="w-full text-left text-xs text-[#878A99]">
+            <thead className="bg-[#F3F6F9] text-[#495057] font-semibold uppercase text-[11px] tracking-wider border-b border-[#E9EBEC]">
               <tr>
-                <th className="p-3">Rank</th>
-                <th className="p-3">Miner Name & ID</th>
-                <th className="p-3">Extraction Zone</th>
-                <th className="p-3">Avg Gas Exposure</th>
-                <th className="p-3">Incident Flags</th>
-                <th className="p-3">Cumulative Risk Index</th>
+                <th className="p-3.5 w-12 text-center">Rank</th>
+                <th className="p-3.5">Miner / Helmet</th>
+                <th className="p-3.5">Deployment Drift</th>
+                <th className="p-3.5">Mean Gas (MQ-2)</th>
+                <th className="p-3.5 text-center">Shift Incidents</th>
+                <th className="p-3.5">Risk Exposure Index</th>
+                <th className="p-3.5 text-right">Exposure Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {riskLeaderboard.map(item => (
-                <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-3 font-bold text-slate-800">#{item.rank}</td>
-                  <td className="p-3 font-bold text-slate-900">{item.name} <span className="text-slate-400 font-normal">({item.id})</span></td>
-                  <td className="p-3 font-medium text-slate-600">{item.zone}</td>
-                  <td className="p-3 font-mono font-semibold text-slate-800">{item.avgGas}</td>
-                  <td className="p-3">
-                    {item.incidents > 0 ? (
-                      <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded font-bold text-[10px]">
-                        {item.incidents} Alarmed
-                      </span>
+            <tbody className="divide-y divide-[#E9EBEC]">
+              {riskLeaderboard.map((item) => (
+                <tr key={item.id} className="hover:bg-[#F8FAFB] transition-colors">
+                  <td className="p-3.5 text-center font-bold text-[#495057]">
+                    #{item.rank}
+                  </td>
+                  <td className="p-3.5 font-semibold text-[#212529]">
+                    <div>{item.name}</div>
+                    <div className="text-[10px] text-[#878A99] font-mono">{item.id} • {item.helmet}</div>
+                  </td>
+                  <td className="p-3.5 font-medium text-[#495057]">
+                    {item.zone}
+                  </td>
+                  <td className="p-3.5 font-mono text-[#495057] font-bold">
+                    {item.avgGas}
+                  </td>
+                  <td className="p-3.5 text-center font-mono font-bold">
+                    <span className={item.incidents > 0 ? 'text-[#F06548]' : 'text-[#878A99]'}>
+                      {item.incidents !== null ? item.incidents : '—'}
+                    </span>
+                  </td>
+                  <td className="p-3.5">
+                    {item.riskScore !== null ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-24 bg-[#E9EBEC] rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-full ${
+                              item.riskScore > 70 ? 'bg-[#F06548]' : item.riskScore > 30 ? 'bg-[#F7B84B]' : 'bg-[#0AB39C]'
+                            }`}
+                            style={{ width: `${item.riskScore}%` }}
+                          />
+                        </div>
+                        <span className="font-mono text-xs font-bold text-[#495057]">{item.riskScore}</span>
+                      </div>
                     ) : (
-                      <span className="text-slate-400 font-medium">0 Clean</span>
+                      <span className="text-[#878A99] font-mono">—</span>
                     )}
                   </td>
-                  <td className="p-3">
-                    <div className="flex items-center space-x-2">
-                      <div className="w-24 bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${item.riskScore >= 70 ? 'bg-rose-500' : item.riskScore >= 30 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                          style={{ width: `${item.riskScore}%` }}
-                        />
-                      </div>
-                      <span className="font-bold text-xs">{item.riskScore}/100</span>
-                    </div>
+                  <td className="p-3.5 text-right">
+                    <span className={
+                      item.status === 'ELEVATED' ? 'badge-soft-danger' :
+                      item.status === 'NORMAL' ? 'badge-soft-success' :
+                      'badge-soft-dark'
+                    }>
+                      {item.status}
+                    </span>
                   </td>
                 </tr>
               ))}

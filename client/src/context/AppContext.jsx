@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '../services/api';
 
 const AppContext = createContext(null);
@@ -21,9 +21,12 @@ export function AppProvider({ children }) {
   const [unitCelsius, setUnitCelsius] = useState(true);
   const [demoMode, setDemoMode] = useState(true);
   const [toasts, setToasts] = useState([]);
+  const [mlPrediction, setMlPrediction] = useState(null);
+  const [mlStatus, setMlStatus] = useState('OFFLINE');
+  const mlPredictionsMapRef = useRef({});
 
   // Audio beep effect for critical alerts
-  const playAlertSound = () => {
+  const playAlertSound = useCallback(() => {
     if (!soundEnabled) return;
     try {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -38,22 +41,22 @@ export function AppProvider({ children }) {
       osc.start();
       osc.stop(audioCtx.currentTime + 0.5);
     } catch (e) {}
-  };
+  }, [soundEnabled]);
 
-  const addToast = (toast) => {
+  const addToast = useCallback((toast) => {
     const id = Date.now() + Math.random().toString(36).substring(2, 6);
     setToasts(prev => [...prev, { id, ...toast }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 6000);
-  };
+  }, []);
 
-  const removeToast = (id) => {
+  const removeToast = useCallback((id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
-  };
+  }, []);
 
   // Initial Data Fetch
-  const refreshData = async () => {
+  const refreshData = useCallback(async () => {
     try {
       setIsServerWaking(false);
       const [latestRes, alertsRes, statsRes, threshRes] = await Promise.all([
@@ -72,7 +75,7 @@ export function AppProvider({ children }) {
         setIsServerWaking(true);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     refreshData();
@@ -116,6 +119,38 @@ export function AppProvider({ children }) {
       // On worker add/update/delete
       () => {
         refreshData();
+      },
+      // On ML gas prediction
+      (prediction) => {
+        mlPredictionsMapRef.current[prediction.worker_id] = {
+          ...prediction,
+          receivedAt: Date.now()
+        };
+
+        const allPreds = Object.values(mlPredictionsMapRef.current);
+        const criticalOrElevated = allPreds.find(p => 
+          p.risk_level?.includes('CRITICAL') || 
+          p.risk_level?.includes('ELEVATED') || 
+          (p.risk_probability != null && p.risk_probability >= 0.5)
+        );
+        const physicalPred = mlPredictionsMapRef.current['W006'];
+        const isPhysicalActive = physicalPred && (Date.now() - physicalPred.receivedAt < 45000);
+
+        if (criticalOrElevated) {
+          setMlPrediction(criticalOrElevated);
+        } else if (isPhysicalActive) {
+          setMlPrediction(physicalPred);
+        } else {
+          setMlPrediction(prediction);
+        }
+
+        setMlStatus('READY');
+      },
+      // On ML gas readiness
+      (readiness) => {
+        if (!readiness?.ready) {
+          setMlStatus('WARMING UP');
+        }
       }
     );
 
@@ -126,10 +161,12 @@ export function AppProvider({ children }) {
 
     socket.on('disconnect', () => {
       setIsConnected(false);
+      setMlStatus('OFFLINE');
     });
 
     socket.on('connect_error', () => {
       setIsConnected(false);
+      setMlStatus('OFFLINE');
     });
 
     // Periodic polling as fallback
@@ -139,13 +176,38 @@ export function AppProvider({ children }) {
       clearInterval(interval);
       api.disconnectSocket();
     };
-  }, [soundEnabled]);
+  }, [soundEnabled, refreshData]);
+
+  const injectDemoAlert = useCallback((alert) => {
+    setActiveAlerts(prev => [alert, ...prev.filter(a => a.id !== alert.id)]);
+  }, []);
+
+  const resolveDemoAlert = useCallback((alertId) => {
+    setActiveAlerts(prev => prev.map(a => 
+      a.id === alertId ? { ...a, resolved_at: new Date().toISOString() } : a
+    ));
+  }, []);
+
+  const acknowledgeDemoAlert = useCallback((alertId) => {
+    setActiveAlerts(prev => prev.map(a => 
+      a.id === alertId ? { ...a, acknowledged: true, acknowledged_by: 'Safety Officer', acknowledged_at: new Date().toISOString() } : a
+    ));
+  }, []);
+
+  const clearDemoAlerts = useCallback(() => {
+    setActiveAlerts(prev => prev.filter(a => !a.is_demo && a.worker_id !== 'DEMO-MINER-01'));
+  }, []);
 
   const value = {
     user,
     setUser,
     workersLatest,
     activeAlerts,
+    setActiveAlerts,
+    injectDemoAlert,
+    resolveDemoAlert,
+    acknowledgeDemoAlert,
+    clearDemoAlerts,
     summaryStats,
     thresholds,
     isConnected,
@@ -164,7 +226,9 @@ export function AppProvider({ children }) {
     addToast,
     removeToast,
     refreshData,
-    playAlertSound
+    playAlertSound,
+    mlPrediction,
+    mlStatus
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
